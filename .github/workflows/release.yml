@@ -38,9 +38,7 @@ jobs:
         echo "VERSION=$VERSION" >> $GITHUB_ENV
     
     - name: Build with Maven
-      run: |
-        mvn -B package --file pom.xml -DskipTests
-        mv target/*.jar target/owasp-scanner.jar
+      run: mvn -B package --file pom.xml
     
     - name: Check JAR file
       run: |
