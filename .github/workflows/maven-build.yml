@@ -12,10 +12,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v2
     
     - name: Set up JDK 11
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v2
       with:
         java-version: '11'
         distribution: 'temurin'
@@ -28,7 +28,7 @@ jobs:
       run: mvn -B test
     
     - name: Upload build artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v2
       with:
         name: owasp-scanner-jar
         path: target/owasp-scanner.jar
@@ -39,10 +39,10 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v2
     
     - name: Download JAR artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v2
       with:
         name: owasp-scanner-jar
         path: ./
@@ -50,7 +50,7 @@ jobs:
     - name: Get Version
       id: get_version
       run: |
-        echo "VERSION=$(grep -o '<version>.*</version>' pom.xml | head -1 | sed 's/<version>//' | sed 's/<\/version>//')" >> $GITHUB_OUTPUT
+        echo "VERSION=$(grep -o '<version>.*</version>' pom.xml | head -1 | sed 's/<version>//' | sed 's/<\/version>//')" >> $GITHUB_ENV
 
     - name: Create Release
       id: create_release
@@ -58,14 +58,14 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: v${{ steps.get_version.outputs.VERSION }}
-        name: Release v${{ steps.get_version.outputs.VERSION }}
+        tag_name: v${{ env.VERSION }}
+        name: Release v${{ env.VERSION }}
         draft: false
         prerelease: false
         files: |
           owasp-scanner.jar
         body: |
-          OWASP Scanner Release v${{ steps.get_version.outputs.VERSION }}
+          OWASP Scanner Release v${{ env.VERSION }}
           
           ## Changes in this release
           
