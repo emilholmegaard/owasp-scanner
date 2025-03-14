@@ -38,7 +38,7 @@ jobs:
       run: mvn -B test
     
     - name: Upload build artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v2
       with:
         name: owasp-scanner-jar
         path: target/owasp-scanner.jar
