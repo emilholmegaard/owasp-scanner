@@ -67,7 +67,7 @@ class DotNetScannerTest {
         List<SecurityViolation> violations = scanner.scanFile(testFile);
         
         // Verify violations
-        assertFalse(violations.isEmpty());
+        assertTrue(!violations.isEmpty(), "Should find at least one violation");
         boolean foundSqlInjection = violations.stream()
             .anyMatch(v -> v.getRuleId().equals("DOTNET-SEC-003") && 
                    v.getDescription().contains("SQL Injection"));
@@ -91,7 +91,7 @@ class DotNetScannerTest {
         List<SecurityViolation> violations = scanner.scanFile(testFile);
         
         // Verify violations
-        assertFalse(violations.isEmpty());
+        assertTrue(!violations.isEmpty(), "Should find at least one violation");
         boolean foundXss = violations.stream()
             .anyMatch(v -> v.getRuleId().equals("DOTNET-SEC-004") && 
                    v.getDescription().contains("Cross-Site Scripting"));
