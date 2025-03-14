@@ -1,7 +1,6 @@
 package org.emilholmegaard.owaspscanner.core;
 
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
@@ -104,11 +103,13 @@ class BaseScannerEngineTest {
     }
     
     @Test
-    @Disabled("Test is disabled due to potential serialization issues in CI environment")
     void testExportToJson(@TempDir Path tempDir) throws IOException {
         // Create a test violation
+        Path testFilePath = tempDir.resolve("test.cs");
+        Files.writeString(testFilePath, "// Test file for violation");
+        
         SecurityViolation violation = new SecurityViolation(
-            "TEST-001", "Test violation", Paths.get("test.cs"), 1, 
+            "TEST-001", "Test violation", testFilePath, 1, 
             "Code snippet", "HIGH", "Fix it", "https://example.com");
         
         List<SecurityViolation> violations = Collections.singletonList(violation);
@@ -125,5 +126,7 @@ class BaseScannerEngineTest {
         assertTrue(content.contains("HIGH"));
         assertTrue(content.contains("Fix it"));
         assertTrue(content.contains("https://example.com"));
+        // Check for filePathString instead of filePath
+        assertTrue(content.contains("filePathString"));
     }
 }
