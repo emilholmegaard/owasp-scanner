@@ -13,7 +13,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 /**
  * Scanner implementation for .NET applications based on OWASP .NET Security Cheat Sheet.
@@ -45,8 +44,15 @@ public class DotNetScanner implements SecurityScanner {
         List<SecurityViolation> violations = new ArrayList<>();
         
         try {
-            List<String> lines = Files.readAllLines(filePath);
-            RuleContext context = new BaseScannerEngine.DefaultRuleContext(filePath);
+            // Use the central file reading method with encoding fallback
+            List<String> lines = BaseScannerEngine.readFileWithFallback(filePath);
+            
+            // Skip empty files or files that couldn't be read
+            if (lines.isEmpty()) {
+                return violations;
+            }
+            
+            RuleContext context = new BaseScannerEngine.DefaultRuleContext(filePath, lines);
             
             for (int i = 0; i < lines.size(); i++) {
                 String line = lines.get(i);
@@ -93,9 +99,8 @@ public class DotNetScanner implements SecurityScanner {
                     .build());
                 }
             }
-        } catch (IOException e) {
-            System.err.println("Error reading file " + filePath + ": " + e.getMessage());
-            e.printStackTrace();
+        } catch (Exception e) {
+            System.err.println("Error scanning file " + filePath + ": " + e.getMessage());
         }
         
         return violations;
