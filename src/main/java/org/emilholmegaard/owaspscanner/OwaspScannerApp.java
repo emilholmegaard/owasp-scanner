@@ -5,6 +5,7 @@ import org.emilholmegaard.owaspscanner.core.ScannerEngine;
 import org.emilholmegaard.owaspscanner.core.SecurityViolation;
 import org.emilholmegaard.owaspscanner.scanners.DotNetScanner;
 
+import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
@@ -54,14 +55,34 @@ public class OwaspScannerApp {
         // Register available scanners
         engine.registerScanner(new DotNetScanner());
         
+        // Normalize path for cross-platform compatibility
+        Path normalizedPath = Paths.get(directoryPath).normalize();
+        
+        // Verify directory exists
+        File dirFile = normalizedPath.toFile();
+        if (!dirFile.exists()) {
+            System.err.println("Error: Directory does not exist: " + normalizedPath);
+            return;
+        }
+        if (!dirFile.isDirectory()) {
+            System.err.println("Error: Path is not a directory: " + normalizedPath);
+            return;
+        }
+        
         // Run the scan
-        List<SecurityViolation> violations = engine.scanDirectory(Paths.get(directoryPath));
+        List<SecurityViolation> violations = engine.scanDirectory(normalizedPath);
         
         // Print summary
-        System.out.println("Scan completed. Found " + violations.size() + " potential security issues.");
+        System.out.println("\nScan completed. Found " + violations.size() + " potential security issues.");
         
         // Export results
-        engine.exportToJson(violations, Paths.get(outputPath));
+        try {
+            Path outputFilePath = Paths.get(outputPath).normalize();
+            engine.exportToJson(violations, outputFilePath);
+        } catch (Exception e) {
+            System.err.println("Error exporting results: " + e.getMessage());
+            System.err.println("Results will not be saved to file.");
+        }
         
         // Print categorized summary
         printSummary(violations);
@@ -96,9 +117,13 @@ public class OwaspScannerApp {
             violations.stream()
                 .filter(v -> "CRITICAL".equals(v.getSeverity()) || "HIGH".equals(v.getSeverity()))
                 .limit(5)
-                .forEach(v -> System.out.println("- " + v.getRuleId() + ": " + 
-                        v.getDescription() + " in " + v.getFilePath().getFileName() + 
-                        " (line " + v.getLineNumber() + ")"));
+                .forEach(v -> {
+                    String filename = v.getFilePath().getFileName() != null ?
+                        v.getFilePath().getFileName().toString() : "<unknown file>";
+                    System.out.println("- " + v.getRuleId() + ": " + 
+                        v.getDescription() + " in " + filename + 
+                        " (line " + v.getLineNumber() + ")");
+                });
         }
     }
     
