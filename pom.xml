@@ -7,12 +7,13 @@
     <groupId>org.emilholmegaard</groupId>
     <artifactId>owasp-scanner</artifactId>
     <version>1.0-SNAPSHOT</version>
+
     <name>OWASP Scanner</name>
     <description>Security scanner based on OWASP Cheat Sheet Series</description>
 
     <properties>
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.target>11</maven.compiler.target>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.9.3</junit.version>
     </properties>
