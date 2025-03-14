@@ -37,32 +37,33 @@ jobs:
     - name: Run tests
       run: mvn -B test
     
-    - name: Upload build artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: owasp-scanner-jar
-        path: target/owasp-scanner.jar
-    
     - name: Create Release
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       id: create_release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: v${{ env.VERSION }}-${{ github.run_number }}
-        name: OWASP Scanner v${{ env.VERSION }}-${{ github.run_number }}
-        draft: false
-        prerelease: false
-        files: |
-          target/owasp-scanner.jar
-        body: |
-          OWASP Scanner v${{ env.VERSION }} build ${{ github.run_number }}
-          
-          ## How to use
-          
-          ```bash
-          java -jar owasp-scanner.jar scan /path/to/your/code
-          ```
-          
-          ## Changelog
-          - Improved security scanning for .NET applications
-          - Bug fixes and performance improvements
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Verify JAR file exists
+        if [ ! -f "target/owasp-scanner.jar" ]; then
+          echo "JAR file not found at expected location"
+          exit 1
+        fi
+        
+        # Create tag name
+        TAG_NAME="v${{ env.VERSION }}-${{ github.run_number }}"
+        
+        # Create release with GitHub CLI
+        gh release create "$TAG_NAME" \
+          --title "OWASP Scanner $TAG_NAME" \
+          --notes "OWASP Scanner v${{ env.VERSION }} build ${{ github.run_number }}
+
+        ## How to use
+
+        \`\`\`bash
+        java -jar owasp-scanner.jar scan /path/to/your/code
+        \`\`\`
+
+        ## Changelog
+        - Improved security scanning for .NET applications
+        - Bug fixes and performance improvements" \
+          "./target/owasp-scanner.jar"
