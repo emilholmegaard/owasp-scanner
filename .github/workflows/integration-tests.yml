@@ -27,10 +27,17 @@ jobs:
       run: mvn verify -P integration-tests
     
     - name: Upload integration test reports
-      if: failure()
       uses: actions/upload-artifact@v3
+      if: failure()
       with:
         name: integration-test-reports
         path: target/failsafe-reports
         retention-days: 5
-        if-no-files-found: ignore
+
+    # Explicitly download artifact to test its availability
+    - name: Download integration test reports
+      if: failure()
+      uses: actions/download-artifact@v3
+      with:
+        name: integration-test-reports
+        path: downloaded-integration-test-reports
