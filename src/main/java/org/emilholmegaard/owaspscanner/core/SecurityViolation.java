@@ -9,7 +9,8 @@ import java.util.List;
 public class SecurityViolation {
     private String ruleId;
     private String description;
-    private Path filePath;
+    private transient Path filePath; // Mark as transient to avoid serialization issues
+    private String filePathString; // Add string representation for serialization
     private int lineNumber;
     private String snippet;
     private String severity;
@@ -23,6 +24,7 @@ public class SecurityViolation {
         this.ruleId = ruleId;
         this.description = description;
         this.filePath = filePath;
+        this.filePathString = filePath != null ? filePath.toString() : null;
         this.lineNumber = lineNumber;
         this.snippet = snippet;
         this.severity = severity;
@@ -34,6 +36,7 @@ public class SecurityViolation {
     public String getRuleId() { return ruleId; }
     public String getDescription() { return description; }
     public Path getFilePath() { return filePath; }
+    public String getFilePathString() { return filePathString; }
     public int getLineNumber() { return lineNumber; }
     public String getSnippet() { return snippet; }
     public String getSeverity() { return severity; }
