@@ -2,6 +2,8 @@ package org.emilholmegaard.owaspscanner.scanners.dotnet;
 
 import org.emilholmegaard.owaspscanner.core.RuleContext;
 
+import java.util.List;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -18,86 +20,93 @@ public class SqlInjectionRule extends AbstractDotNetSecurityRule {
     private static final String REFERENCE = 
             "https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html#sql-injection";
     
-    // Comprehensive SQL injection detection pattern
-    private static final Pattern SQL_INJECTION_PATTERN = Pattern.compile(
-        "(?i)" +
-        "(FromSqlRaw\\([\"'].*\\+.*[\"']\\)|" +  // Entity Framework raw SQL with concatenation
-        "ExecuteSqlRaw(Async)?\\([\"'].*\\+.*[\"']\\)|" +  // ExecuteSqlRaw methods
-        "SqlCommand\\(.*\\+.*\\)|" +  // SqlCommand with concatenation
-        "string\\.Format\\(.*SELECT.*\\+.*\\)|" +  // String formatting with SQL
-        "CreateCommand\\(\\)\\.CommandText\\s*=.*\\+|" +  // Setting command text with concatenation
-        "new\\s+OleDbCommand\\(.*\\+.*\\)|" +  // OleDb command with concatenation
-        "DbCommand\\.CreateCommand\\(\\)\\.CommandText\\s*=.*\\+|" +  // DbCommand with concatenation
-        "ExecuteReader\\(\\)\\s*\\..*\\s*=.*\\+|" +  // Execute reader with concatenation
-        "Username\\s*=\\s*[\"'].*\\s*\\+.*[\"']|" +  // Direct user input in queries
-        "Email\\s*=\\s*[\"'].*\\s*\\+.*[\"']|" +  // Email concatenation
-        "string\\s+query\\s*=\\s*[\"'].*\\s*\\+.*[\"'])"  // Direct query string concatenation
-    );
+    // Comprehensive SQL injection detection patterns
+    private static final Pattern[] SQL_INJECTION_PATTERNS = new Pattern[] {
+        // Direct string concatenation in SQL queries
+        Pattern.compile("(?i)(string\\s+(?:query|sql)\\s*=\\s*[\"'].*?\\s*\\+\\s*\\w+)"),
+        
+        // SqlCommand with concatenated query
+        Pattern.compile("(?i)(new\\s+SqlCommand\\([\"'].*?\\s*\\+\\s*\\w+)"),
+        
+        // Raw SQL methods with concatenation
+        Pattern.compile("(?i)((?:FromSqlRaw|ExecuteSqlRaw|ExecuteSqlRawAsync)\\([\"'].*?\\s*\\+\\s*\\w+)"),
+        
+        // Database ExecuteRaw methods with concatenation
+        Pattern.compile("(?i)(_db\\.Database\\.ExecuteSqlRaw.*?\\+)"),
+        
+        // LIKE query with user input concatenation
+        Pattern.compile("(?i)(LIKE\\s*[\"']%\\s*\\+\\s*\\w+\\s*\\+\\s*%[\"'])"),
+        
+        // Generic string concatenation near SQL keywords
+        Pattern.compile("(?i)(SELECT|INSERT|UPDATE|DELETE|EXEC).*?\\+")
+    };
     
-    // Pattern for potentially unsafe method calls
-    private static final Pattern UNSAFE_METHOD_PATTERN = Pattern.compile(
-        "(?i)(ExecuteNonQuery|ExecuteScalar|ExecuteReader|FromSqlRaw|ExecuteSqlRaw)"
-    );
+    // Patterns for detecting user input or parameters
+    private static final Pattern[] USER_INPUT_PATTERNS = new Pattern[] {
+        Pattern.compile("(?i)(username|email|searchTerm|input)"),
+        Pattern.compile("(?i)(Request\\.|Model\\.|\\[FromBody\\]|\\[FromQuery\\])"),
+        Pattern.compile("(?i)(HttpContext\\.Request)")
+    };
     
-    // Pattern for user input or parameter detection
-    private static final Pattern USER_INPUT_PATTERN = Pattern.compile(
-        "(?i)(username|email|searchTerm|Request\\.|Model\\.|\\[FromBody\\]|\\[FromQuery\\])"
-    );
-    
-    // Pattern to detect safe parameter usage
-    private static final Pattern SAFE_PARAM_PATTERN = Pattern.compile(
-        "(?i)Parameters\\.Add|" +
-        "Parameters\\.AddWithValue|" +
-        "new SqlParameter|" +
-        "CreateParameter|" +
-        "DbParameter\\..*=|" +
-        "AddWithValue\\("
-    );
-    
-    // Pattern for safe ORM methods
-    private static final Pattern SAFE_ORM_PATTERN = Pattern.compile(
-        "(?i)Where\\(|" +
-        "FirstOrDefault\\(|" +
-        "SingleOrDefault\\(|" +
-        "Find\\(|" +
-        "Include\\(|" +
-        "DbContext|" +
-        "DbSet|" +
-        "EntityFrameworkCore|" +
-        "FromSqlInterpolated"
-    );
+    // Patterns for safe SQL practices
+    private static final Pattern[] SAFE_SQL_PATTERNS = new Pattern[] {
+        Pattern.compile("(?i)(Parameters\\.Add|Parameters\\.AddWithValue)"),
+        Pattern.compile("(?i)(new\\s+SqlParameter)"),
+        Pattern.compile("(?i)(CreateParameter|AddParameter)"),
+        Pattern.compile("(?i)(FromSqlInterpolated)")
+    };
     
     public SqlInjectionRule() {
-        super(RULE_ID, DESCRIPTION, SEVERITY, REMEDIATION, REFERENCE, SQL_INJECTION_PATTERN);
+        super(RULE_ID, DESCRIPTION, SEVERITY, REMEDIATION, REFERENCE);
     }
     
     @Override
     protected boolean checkViolation(String line, int lineNumber, RuleContext context) {
-        // Check for SQL injection pattern
-        if (SQL_INJECTION_PATTERN.matcher(line).find()) {
-            // Get surrounding context
-            String surroundingCode = String.join("\n", context.getLinesAround(lineNumber, 5));
-            
-            // Check for potentially unsafe method calls
-            boolean hasUnsafeMethod = UNSAFE_METHOD_PATTERN.matcher(line).find();
-            
-            // Check for user input
-            boolean hasUserInput = USER_INPUT_PATTERN.matcher(line).find() || 
-                                   USER_INPUT_PATTERN.matcher(surroundingCode).find();
-            
-            // Check for safe parameter usage
-            boolean hasSafeParams = SAFE_PARAM_PATTERN.matcher(surroundingCode).find();
-            
-            // Check for safe ORM methods
-            boolean hasSafeOrm = SAFE_ORM_PATTERN.matcher(surroundingCode).find();
-            
-            // Flag as vulnerability if:
-            // 1. Unsafe method is used
-            // 2. User input is present
-            // 3. No safe parameters or ORM methods are used
-            return hasUnsafeMethod && hasUserInput && !(hasSafeParams || hasSafeOrm);
+        // Check for SQL injection patterns
+        for (Pattern pattern : SQL_INJECTION_PATTERNS) {
+            Matcher matcher = pattern.matcher(line);
+            if (matcher.find()) {
+                // Get surrounding context
+                List<String> surroundingLines = context.getLinesAround(lineNumber, 5);
+                String surroundingCode = String.join("\n", surroundingLines);
+                
+                // Check for user input
+                boolean hasUserInput = hasUserInput(line, surroundingCode);
+                
+                // Check for safe SQL practices
+                boolean hasSafeSqlPractices = hasSafeSqlPractices(surroundingCode);
+                
+                // Vulnerability exists if user input is present and no safe practices are used
+                if (hasUserInput && !hasSafeSqlPractices) {
+                    return true;
+                }
+            }
         }
         
+        return false;
+    }
+    
+    /**
+     * Checks if the line or surrounding code contains user input indicators.
+     */
+    private boolean hasUserInput(String line, String surroundingCode) {
+        for (Pattern pattern : USER_INPUT_PATTERNS) {
+            if (pattern.matcher(line).find() || pattern.matcher(surroundingCode).find()) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * Checks if the surrounding code uses safe SQL practices.
+     */
+    private boolean hasSafeSqlPractices(String surroundingCode) {
+        for (Pattern pattern : SAFE_SQL_PATTERNS) {
+            if (pattern.matcher(surroundingCode).find()) {
+                return true;
+            }
+        }
         return false;
     }
 }
