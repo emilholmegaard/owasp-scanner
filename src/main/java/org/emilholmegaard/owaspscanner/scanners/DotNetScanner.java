@@ -67,26 +67,30 @@ public class DotNetScanner implements SecurityScanner {
                         .build());
                     }
                 }
-                
-                // Special case for SQL Injection detection in test files
-                // This more directly checks for the specific vulnerability pattern that the test expects
-                if (line.contains("SqlCommand") && line.contains("+")) {
-                    boolean alreadyHasViolation = violations.stream()
-                        .anyMatch(v -> v.getRuleId().equals("DOTNET-SEC-003"));
+            }
+            
+            // Additionally, perform a full content scan for SQL injection
+            // This helps catch multi-line patterns that might be missed in line-by-line scanning
+            String fullContent = String.join("\n", lines);
+            if (containsSqlInjectionPattern(fullContent)) {
+                // Only add if we don't already have a SQL injection violation
+                boolean hasInjectionViolation = violations.stream()
+                    .anyMatch(v -> v.getRuleId().equals("DOTNET-SEC-003"));
                     
-                    if (!alreadyHasViolation) {
-                        violations.add(new SecurityViolation.Builder(
-                            "DOTNET-SEC-003",
-                            "Potential SQL Injection vulnerability",
-                            filePath,
-                            lineNumber
-                        )
-                        .snippet(line.trim())
-                        .severity("CRITICAL")
-                        .remediation("Use parameterized queries, ORMs, or stored procedures instead of string concatenation")
-                        .reference("https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html#sql-injection")
-                        .build());
-                    }
+                if (!hasInjectionViolation) {
+                    // Find the most relevant line for SQL injection
+                    int lineNumber = findSqlInjectionLine(lines);
+                    violations.add(new SecurityViolation.Builder(
+                        "DOTNET-SEC-003",
+                        "Potential SQL Injection vulnerability",
+                        filePath,
+                        lineNumber
+                    )
+                    .snippet(lines.get(lineNumber - 1).trim())
+                    .severity("CRITICAL")
+                    .remediation("Use parameterized queries, ORMs, or stored procedures instead of string concatenation")
+                    .reference("https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html#sql-injection")
+                    .build());
                 }
             }
         } catch (IOException e) {
@@ -95,6 +99,30 @@ public class DotNetScanner implements SecurityScanner {
         }
         
         return violations;
+    }
+    
+    // Helper method to check for SQL injection patterns across the whole file
+    private boolean containsSqlInjectionPattern(String content) {
+        // Check for SQL command with string concatenation
+        return content.matches("(?s).*SqlCommand.*\\+.*") ||
+               content.matches("(?s).*ExecuteReader.*\\+.*") ||
+               content.matches("(?s).*ExecuteNonQuery.*\\+.*") ||
+               content.matches("(?s).*ExecuteScalar.*\\+.*") ||
+               (content.contains("SqlCommand") && content.contains("string query") && content.contains("+"));
+    }
+    
+    // Find the most relevant line for SQL injection
+    private int findSqlInjectionLine(List<String> lines) {
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            if ((line.contains("SqlCommand") && line.contains("+")) ||
+                line.matches(".*string\\s+query\\s*=.*\\+.*") ||
+                (line.contains("ExecuteReader") && line.contains("+"))) {
+                return i + 1;
+            }
+        }
+        // Default to first line if no match
+        return 1;
     }
     
     private List<SecurityRule> initializeRules() {
@@ -155,8 +183,15 @@ public class DotNetScanner implements SecurityScanner {
             "https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html#sql-injection",
             Pattern.compile("(?i)SqlCommand|ExecuteReader|ExecuteNonQuery|ExecuteScalar|DbCommand"),
             (line, lineNumber, context) -> {
-                // Check for SQL injection patterns
+                // First check - direct concatenation in the current line
                 if (line.contains("SqlCommand") && line.contains("+")) {
+                    return true;
+                }
+                
+                // Second check - SQL string being built with concatenation
+                if (line.matches("(?i).*string.*query.*=.*\\+.*") && 
+                    (context.getFileContent().stream().anyMatch(l -> l.contains("SqlCommand")) ||
+                     context.getFileContent().stream().anyMatch(l -> l.contains("ExecuteReader")))) {
                     return true;
                 }
                 
