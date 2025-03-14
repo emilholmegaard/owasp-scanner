@@ -2,7 +2,6 @@ package org.emilholmegaard.owaspscanner.scanners.dotnet;
 
 import org.emilholmegaard.owaspscanner.core.RuleContext;
 
-import java.nio.file.Path;
 import java.util.regex.Pattern;
 
 /**
@@ -19,20 +18,30 @@ public class XssPreventionRule extends AbstractDotNetSecurityRule {
     private static final String REFERENCE = 
             "https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html#xss-prevention";
     
-    // Enhanced XSS detection pattern
+    // Comprehensive XSS detection pattern
     private static final Pattern XSS_PATTERN = Pattern.compile(
         "(?i)" +
-        "(var\\s+\\w+\\s*=\\s*[\"']<script>[\"']\\s*\\+\\s*\\w+|" +  // Script tag string concatenation
+        "(Content\\(.*[\"']text/html[\"'].*\\+.*\\)|" +  // Content method with HTML and concatenation
         "@Html\\.Raw|Response\\.Write|document\\.write|" +  // Unsafe output methods
         "innerHTML\\s*=|" +  // Direct innerHTML assignment
-        "\\+\\s*userInput|" +  // Direct user input concatenation
-        "Content\\(.*[\"']text/html[\"'].*\\+)");  // Unsafe HTML content generation
+        "\\+\\s*[\\w.]+\\s*\\+|" +  // String concatenation 
+        "string\\.Format\\(.*%s.*\\)|" +  // Potential string formatting
+        "HtmlString|MvcHtmlString|" +  // Potentially unsafe HTML generation
+        "return\\s+Content\\(.*<.*\\+.*>.*\\))"  // Content return with HTML and concatenation
+    );
+    
+    // Pattern for user input detection
+    private static final Pattern USER_INPUT_PATTERN = Pattern.compile(
+        "(?i)(message|title|body|content|userInput|Request\\.|Model\\.|\\[FromBody\\]|\\[FromQuery\\])"
+    );
     
     // Pattern for safe encoding
     private static final Pattern SAFE_ENCODING_PATTERN = Pattern.compile(
         "(?i)HtmlEncoder\\.Encode|" +
         "HttpUtility\\.HtmlEncode|" +
-        "@Html\\.Encode");
+        "@Html\\.Encode|" +
+        "WebUtility\\.HtmlEncode"
+    );
     
     public XssPreventionRule() {
         super(RULE_ID, DESCRIPTION, SEVERITY, REMEDIATION, REFERENCE, XSS_PATTERN);
@@ -42,13 +51,18 @@ public class XssPreventionRule extends AbstractDotNetSecurityRule {
     protected boolean checkViolation(String line, int lineNumber, RuleContext context) {
         // Check if line contains XSS-related pattern
         if (XSS_PATTERN.matcher(line).find()) {
-            // Additional context check
+            // Get surrounding context
             String surroundingCode = String.join("\n", context.getLinesAround(lineNumber, 5));
             
-            // Check for lack of safe encoding 
+            // Check for user input
+            boolean hasUserInput = USER_INPUT_PATTERN.matcher(line).find() || 
+                                   USER_INPUT_PATTERN.matcher(surroundingCode).find();
+            
+            // Check for safe encoding
             boolean isSafelyEncoded = SAFE_ENCODING_PATTERN.matcher(surroundingCode).find();
             
-            return !isSafelyEncoded;
+            // If user input is present and not safely encoded, flag as vulnerability
+            return hasUserInput && !isSafelyEncoded;
         }
         
         return false;
