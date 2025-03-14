@@ -1,4 +1,4 @@
-name: Build, Test and Release
+name: Build and Test
 
 on:
   push:
@@ -12,7 +12,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - name: Checkout code
+      uses: actions/checkout@v2
     
     - name: Set up JDK 11
       uses: actions/setup-java@v2
@@ -27,52 +28,22 @@ jobs:
     - name: Run tests
       run: mvn -B test
     
-    - name: Upload build artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: owasp-scanner-jar
-        path: target/owasp-scanner.jar
-    
-  release:
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'  # Only on push to main
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v2
-    
-    - name: Download JAR artifact
-      uses: actions/download-artifact@v2
-      with:
-        name: owasp-scanner-jar
-        path: ./
-    
-    - name: Get Version
-      id: get_version
-      run: |
-        echo "VERSION=$(grep -o '<version>.*</version>' pom.xml | head -1 | sed 's/<version>//' | sed 's/<\/version>//')" >> $GITHUB_ENV
-
     - name: Create Release
-      id: create_release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       uses: softprops/action-gh-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: v${{ env.VERSION }}
-        name: Release v${{ env.VERSION }}
+        tag_name: release-${{ github.run_number }}
+        name: Release Build ${{ github.run_number }}
         draft: false
         prerelease: false
-        files: |
-          owasp-scanner.jar
+        files: target/owasp-scanner.jar
         body: |
-          OWASP Scanner Release v${{ env.VERSION }}
-          
-          ## Changes in this release
-          
-          * Latest version from main branch
+          OWASP Scanner automated release build
           
           ## How to use
           
           ```bash
           java -jar owasp-scanner.jar scan /path/to/your/code
           ```
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
