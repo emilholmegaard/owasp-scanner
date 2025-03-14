@@ -20,7 +20,7 @@ public class XssPreventionRule extends AbstractDotNetSecurityRule {
     
     private static final Pattern PATTERN = 
             Pattern.compile("(?i)@Html\\.Raw|Response\\.Write|document\\.write|innerHtml|" +
-                           "HtmlString|JavaScriptString|MvcHtmlString");
+                           "HtmlString|JavaScriptString|MvcHtmlString|Content\\(|return .*html");
     
     // Pattern for safe encoding usage
     private static final Pattern SAFE_ENCODING_PATTERN = Pattern.compile(
@@ -33,7 +33,7 @@ public class XssPreventionRule extends AbstractDotNetSecurityRule {
     // Pattern for content coming from user input
     private static final Pattern USER_INPUT_PATTERN = Pattern.compile(
             "(?i)Request\\.|Model\\.|\\[FromBody\\]|\\[FromQuery\\]|" +
-            "HttpContext\\.Request|Form\\[|IFormFile");
+            "HttpContext\\.Request|Form\\[|IFormFile|searchTerm|username|message|content");
     
     /**
      * Creates a new XssPreventionRule.
@@ -44,24 +44,34 @@ public class XssPreventionRule extends AbstractDotNetSecurityRule {
     
     @Override
     protected boolean checkViolation(String line, int lineNumber, RuleContext context) {
-        // Check if this is an immediate high-risk pattern
+        // Detect common HTML generation in controllers
+        if (line.contains("Content(") && line.contains("\"text/html\"") && 
+           (line.contains("+") || line.contains("$"))) {
+            return true;
+        }
+        
+        // Detect Response.Write with string concatenation
+        if (line.contains("Response.Write(") && 
+           (line.contains("+") || line.contains("$"))) {
+            return true;
+        }
+        
+        // Detect @Html.Raw usage
         if (line.contains("@Html.Raw")) {
             return true;
         }
         
-        if (line.contains("Response.Write")) {
-            return true;
-        }
-        
+        // Detect document.write
         if (line.contains("document.write")) {
             return true;
         }
         
+        // Detect innerHtml assignment
         if (line.contains("innerHtml") && line.contains("=")) {
             return true;
         }
         
-        // Check for potentially unsafe pattern
+        // Check for potentially unsafe pattern with common variable names
         if (PATTERN.matcher(line).find()) {
             // Get surrounding context
             String surroundingCode = String.join("\n", context.getLinesAround(lineNumber, 5));
