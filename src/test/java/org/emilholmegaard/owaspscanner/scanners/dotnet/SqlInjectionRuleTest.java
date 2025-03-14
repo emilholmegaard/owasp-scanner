@@ -1,138 +1,152 @@
 package org.emilholmegaard.owaspscanner.scanners.dotnet;
 
-import org.emilholmegaard.owaspscanner.core.RuleContext;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
-public class SqlInjectionRuleTest {
+/**
+ * Tests for SqlInjectionRule using AAA pattern and parameterized tests.
+ */
+public class SqlInjectionRuleTest extends AbstractRuleTest {
 
     private SqlInjectionRule rule;
     
-    @Mock
-    private RuleContext context;
-    
     @BeforeEach
     public void setUp() {
-        MockitoAnnotations.openMocks(this);
+        super.baseSetUp();
         rule = new SqlInjectionRule();
-        when(context.getFilePath()).thenReturn(Paths.get("TestController.cs"));
     }
     
-    @Test
-    public void testVulnerableStringConcatenation() {
-        // Setup
-        String line = "var cmd = new SqlCommand(\"SELECT * FROM Users WHERE Username = '\" + username + \"'\", conn);";
-        int lineNumber = 10;
-        List<String> fileContent = Arrays.asList(
+    @ParameterizedTest
+    @DisplayName("Should detect SQL injection in vulnerable code")
+    @CsvSource({
+        // Line number (0-based), Code containing SQL injection vulnerability
+        "8, var cmd = new SqlCommand(\"SELECT * FROM Users WHERE Username = '\" + username + \"'\", conn);",
+        "4, string query = \"SELECT * FROM Products WHERE Name LIKE '%\" + searchTerm + \"%'\";",
+        "3, var users = _context.Users.FromSqlRaw(\"SELECT * FROM Users WHERE Email = '\" + email + \"'\");"
+    })
+    void shouldDetectSqlInjection(int lineNumber, String vulnerableLine) {
+        // Arrange
+        List<String> fileContent = codeLines(
             "using System.Data.SqlClient;",
             "public class UserRepository {",
+            "    private readonly string connectionString;",
+            "    ",
             "    public User GetUser(string username) {",
             "        using (var conn = new SqlConnection(connectionString)) {",
             "            conn.Open();",
-            line,
+            "            // Vulnerable SQL query with string concatenation",
+            "            var cmd = new SqlCommand(\"SELECT * FROM Users WHERE Username = '\" + username + \"'\", conn);",
             "            var reader = cmd.ExecuteReader();",
             "            // Process results",
+            "            return new User();",
             "        }",
             "    }",
             "}"
         );
-        when(context.getFileContent()).thenReturn(fileContent);
-        when(context.getLinesAround(lineNumber, 5)).thenReturn(fileContent.subList(3, Math.min(fileContent.size(), 8)));
+        String line = setupTestContext(fileContent, lineNumber, vulnerableLine);
         
-        // Execute
+        // Act
         boolean result = rule.isViolatedBy(line, lineNumber, context);
         
-        // Verify
-        assertTrue(result, "Should detect SQL injection vulnerability due to string concatenation");
+        // Assert
+        assertTrue(result, "Should detect SQL injection vulnerability in: " + vulnerableLine);
     }
     
-    @Test
-    public void testSafeParameterizedQuery() {
-        // Setup
-        String line = "var cmd = new SqlCommand(\"SELECT * FROM Users WHERE Username = @Username\", conn);";
-        int lineNumber = 10;
-        List<String> fileContent = Arrays.asList(
+    @ParameterizedTest
+    @DisplayName("Should not detect SQL injection in secure code")
+    @CsvSource({
+        // Line number (0-based), Secure code without SQL injection
+        "8, var cmd = new SqlCommand(\"SELECT * FROM Users WHERE Username = @Username\", conn);",
+        "9, cmd.Parameters.AddWithValue(\"@Username\", username);",
+        "3, var users = _context.Users.Where(u => u.IsActive).ToList();"
+    })
+    void shouldNotDetectSqlInjectionInSecureCode(int lineNumber, String secureLine) {
+        // Arrange
+        List<String> fileContent = codeLines(
             "using System.Data.SqlClient;",
             "public class UserRepository {",
+            "    private readonly string connectionString;",
+            "    ",
             "    public User GetUser(string username) {",
             "        using (var conn = new SqlConnection(connectionString)) {",
             "            conn.Open();",
-            line,
+            "            // Secure parameterized query",
+            "            var cmd = new SqlCommand(\"SELECT * FROM Users WHERE Username = @Username\", conn);",
             "            cmd.Parameters.AddWithValue(\"@Username\", username);",
             "            var reader = cmd.ExecuteReader();",
             "            // Process results",
+            "            return new User();",
             "        }",
             "    }",
             "}"
         );
-        when(context.getFileContent()).thenReturn(fileContent);
-        when(context.getLinesAround(lineNumber, 5)).thenReturn(fileContent.subList(4, Math.min(fileContent.size(), 9)));
-        when(context.getLinesAround(lineNumber, 10)).thenReturn(fileContent.subList(3, Math.min(fileContent.size(), 13)));
+        String line = setupTestContext(fileContent, lineNumber, secureLine);
         
-        // Execute
+        // Act
         boolean result = rule.isViolatedBy(line, lineNumber, context);
         
-        // Verify
-        assertFalse(result, "Should not detect SQL injection vulnerability when using parameterized queries");
+        // Assert
+        assertFalse(result, "Should not detect SQL injection vulnerability in: " + secureLine);
     }
     
     @Test
-    public void testEntityFrameworkUsage() {
-        // Setup
+    @DisplayName("Should recognize Entity Framework code as safe")
+    void shouldRecognizeEntityFrameworkAsSafe() {
+        // Arrange
         String line = "var user = _context.Users.FirstOrDefault(u => u.Username == username);";
         int lineNumber = 5;
-        List<String> fileContent = Arrays.asList(
+        List<String> fileContent = codeLines(
             "using Microsoft.EntityFrameworkCore;",
             "public class UserRepository {",
             "    private readonly AppDbContext _context;",
+            "    public UserRepository(AppDbContext context) => _context = context;",
             "    public User GetUser(string username) {",
-            line,
+            "        var user = _context.Users.FirstOrDefault(u => u.Username == username);",
             "        return user;",
             "    }",
             "}"
         );
-        when(context.getFileContent()).thenReturn(fileContent);
-        when(context.getLinesAround(lineNumber, 5)).thenReturn(fileContent.subList(2, Math.min(fileContent.size(), 7)));
+        setupTestContext(fileContent, lineNumber, line);
         
-        // Execute
+        // Act
         boolean result = rule.isViolatedBy(line, lineNumber, context);
         
-        // Verify
-        assertFalse(result, "Should not detect SQL injection vulnerability when using Entity Framework");
+        // Assert
+        assertFalse(result, "Should not detect SQL injection in Entity Framework LINQ queries");
     }
     
     @Test
-    public void testVulnerableRawSqlInEF() {
-        // Setup
+    @DisplayName("Should detect raw SQL in EF Core")
+    void shouldDetectRawSqlInEFCore() {
+        // Arrange
         String line = "var users = _context.Users.FromSqlRaw(\"SELECT * FROM Users WHERE Username = '\" + username + \"'\").ToList();";
         int lineNumber = 5;
-        List<String> fileContent = Arrays.asList(
+        List<String> fileContent = codeLines(
             "using Microsoft.EntityFrameworkCore;",
             "public class UserRepository {",
             "    private readonly AppDbContext _context;",
+            "    public UserRepository(AppDbContext context) => _context = context;",
             "    public List<User> GetUsersByRawSql(string username) {",
-            line,
+            "        var users = _context.Users.FromSqlRaw(\"SELECT * FROM Users WHERE Username = '\" + username + \"'\").ToList();",
             "        return users;",
             "    }",
             "}"
         );
-        when(context.getFileContent()).thenReturn(fileContent);
-        when(context.getLinesAround(lineNumber, 5)).thenReturn(fileContent.subList(2, Math.min(fileContent.size(), 7)));
+        setupTestContext(fileContent, lineNumber, line, Paths.get("RawSqlInEFCore.cs"));
         
-        // Execute
+        // Act
         boolean result = rule.isViolatedBy(line, lineNumber, context);
         
-        // Verify
-        assertTrue(result, "Should detect SQL injection vulnerability in raw SQL with Entity Framework");
+        // Assert
+        assertTrue(result, "Should detect SQL injection in EF Core raw SQL methods");
     }
 }
