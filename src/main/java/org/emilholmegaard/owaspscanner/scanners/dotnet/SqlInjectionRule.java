@@ -30,6 +30,9 @@ public class SqlInjectionRule extends AbstractDotNetSecurityRule {
     private static final Pattern SQL_STRING_PATTERN = 
             Pattern.compile("(?i)string\\s+(?:sql|query|cmd|command)\\s*=\\s*");
     
+    private static final Pattern SQL_QUERY_PATTERN =
+            Pattern.compile("(?i)SELECT|INSERT|UPDATE|DELETE|EXEC|EXECUTE");
+    
     private static final Pattern STRING_CONCAT_PATTERN = 
             Pattern.compile("(?i)\\+\\s*[\\w\\.]*|string\\.Format|\\$\"|\\$@\"|@\\$\"");
     
@@ -64,13 +67,21 @@ public class SqlInjectionRule extends AbstractDotNetSecurityRule {
             return true;
         }
         
-        // Case 2: Check for SQL string building with concatenation in surrounding context
+        // Case 2: Detects SQL query strings being built with concatenation
+        if (line.contains("string query = ") || line.contains("var query = ") || 
+            line.contains("string sql = ") || line.contains("var sql = ")) {
+            if (containsSqlQuery(line) && line.contains("+")) {
+                return true;
+            }
+        }
+        
+        // Case 3: Check for SQL string building with concatenation in surrounding context
         List<String> surroundingLines = context.getLinesAround(lineNumber, 5);
         String surroundingCode = String.join("\n", surroundingLines);
         
         boolean hasSqlDeclaration = SQL_STRING_PATTERN.matcher(surroundingCode).find();
         boolean hasStringConcatenation = STRING_CONCAT_PATTERN.matcher(surroundingCode).find();
-        boolean hasSqlExecution = PATTERN.matcher(surroundingCode).find();
+        boolean hasSqlExecution = PATTERN.matcher(surroundingCode).find() || SQL_QUERY_PATTERN.matcher(surroundingCode).find();
         boolean hasParameters = SAFE_PARAM_PATTERN.matcher(surroundingCode).find();
         
         // If we detect SQL string building with concatenation near SQL execution
@@ -78,7 +89,7 @@ public class SqlInjectionRule extends AbstractDotNetSecurityRule {
             return true;
         }
         
-        // Case 3: Check for .Execute methods with string concatenation
+        // Case 4: Check for .Execute methods with string concatenation
         if (line.matches("(?i).*Execute(Reader|NonQuery|Scalar|Command|SqlRaw).*") &&
             (line.contains("+") || line.contains("$") || line.contains("string.Format"))) {
             return !surroundingCode.contains("Parameters.Add");
@@ -99,12 +110,19 @@ public class SqlInjectionRule extends AbstractDotNetSecurityRule {
             // If we find SQL string building with potential user input
             if (SQL_STRING_PATTERN.matcher(widerContextStr).find() && 
                 STRING_CONCAT_PATTERN.matcher(widerContextStr).find() &&
-                widerContextStr.matches("(?i).*\\.Text.*|.*Request\\..*|.*\\[.*\\].*|.*\\+.*")) {
+                widerContextStr.matches("(?i).*\\.Text.*|.*Request\\.*|.*\\[.*\\].*|.*\\+.*")) {
                 return true;
             }
         }
         
         return false;
+    }
+    
+    /**
+     * Checks if a line contains SQL query keywords.
+     */
+    private boolean containsSqlQuery(String line) {
+        return SQL_QUERY_PATTERN.matcher(line).find();
     }
     
     /**
