@@ -1,10 +1,9 @@
 package org.emilholmegaard.owaspscanner.scanners.dotnet;
 
-import org.emilholmegaard.owaspscanner.core.RuleContext;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -14,59 +13,94 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-public class SecureConfigurationRuleTest {
+/**
+ * Tests for SecureConfigurationRule using AAA pattern and parameterized tests.
+ */
+public class SecureConfigurationRuleTest extends AbstractRuleTest {
 
     private SecureConfigurationRule rule;
     
-    @Mock
-    private RuleContext context;
-    
     @BeforeEach
     public void setUp() {
-        MockitoAnnotations.openMocks(this);
+        super.baseSetUp();
         rule = new SecureConfigurationRule();
     }
     
-    @Test
-    public void testDetectsPlaintextPassword() {
-        // Setup
-        String line = "  \"Password\": \"secretP@ssw0rd!\",";
-        int lineNumber = 5;
-        Path path = Paths.get("appsettings.json");
+    @ParameterizedTest
+    @DisplayName("Should detect insecure configurations")
+    @CsvSource({
+        // filename, line number, line content, expected result (true=violation)
+        "appsettings.json, 5, '  \"Password\": \"secretP@ssw0rd!\",', true",
+        "appsettings.Development.json, 3, '    \"DefaultConnection\": \"Server=myServerAddress;Database=myDataBase;User Id=myUsername;Password=secretP@ssw0rd!;\"', true",
+        "web.config, 5, '    <add key=\"AdminPassword\" value=\"admin123\" />', true",
+        "config.json, 7, '  \"ApiKey\": \"abcd1234efgh5678\",', true"
+    })
+    void shouldDetectInsecureConfigurations(String filename, int lineNumber, String lineContent, boolean expectedViolation) {
+        // Arrange
+        Path path = Paths.get(filename);
         
-        List<String> fileContent = Arrays.asList(
-            "{",
-            "  \"ConnectionStrings\": {",
-            "    \"DefaultConnection\": \"Server=myServerAddress;Database=myDataBase;User Id=myUsername;Password=secretP@ssw0rd!;\"",
-            "  },",
-            "  \"ApiSettings\": {",
-            line,
-            "    \"Username\": \"admin\"",
-            "  }",
-            "}"
-        );
+        List<String> fileContent;
+        if (filename.endsWith(".json")) {
+            fileContent = Arrays.asList(
+                "{",
+                "  \"ConnectionStrings\": {",
+                "    \"DefaultConnection\": \"Server=myServerAddress;Database=myDataBase;User Id=myUsername;Password=secretP@ssw0rd!;\"",
+                "  },",
+                "  \"ApiSettings\": {",
+                "  \"Password\": \"secretP@ssw0rd!\",",
+                "    \"Username\": \"admin\"",
+                "  }",
+                "}"
+            );
+        } else if (filename.endsWith(".config")) {
+            fileContent = Arrays.asList(
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?>",
+                "<configuration>",
+                "  <appSettings>",
+                "    <add key=\"ApiUrl\" value=\"https://api.example.com\" />",
+                "    <add key=\"AdminPassword\" value=\"admin123\" />",
+                "    <add key=\"Username\" value=\"admin\" />",
+                "  </appSettings>",
+                "</configuration>"
+            );
+        } else {
+            fileContent = Arrays.asList(
+                "public class TestClass {",
+                "    public void TestMethod() {",
+                "string password = \"tempPassword\"; // Only for testing",
+                "        // Do something with the password",
+                "    }",
+                "}"
+            );
+        }
         
         when(context.getFilePath()).thenReturn(path);
         when(context.getFileContent()).thenReturn(fileContent);
         
-        // Execute
-        boolean result = rule.isViolatedBy(line, lineNumber, context);
+        // Act
+        boolean result = rule.isViolatedBy(lineContent, lineNumber, context);
         
-        // Verify
-        assertTrue(result, "Should detect plaintext password in configuration file");
+        // Assert
+        if (expectedViolation) {
+            assertTrue(result, "Should detect insecure configuration in: " + lineContent);
+        } else {
+            assertFalse(result, "Should not flag as insecure: " + lineContent);
+        }
     }
     
-    @Test
-    public void testIgnoresPasswordInNonConfigFile() {
-        // Setup
-        String line = "string password = \"tempPassword\"; // Only for testing";
-        int lineNumber = 10;
-        Path path = Paths.get("TestClass.cs");
+    @ParameterizedTest
+    @DisplayName("Should not detect insecure configurations in non-config files")
+    @CsvSource({
+        "TestClass.cs, 10, 'string password = \"tempPassword\"; // Only for testing', false"
+    })
+    void shouldNotDetectInsecureConfigurationsInNonConfigFiles(String filename, int lineNumber, String lineContent, boolean expectedViolation) {
+        // Arrange
+        Path path = Paths.get(filename);
         
         List<String> fileContent = Arrays.asList(
             "public class TestClass {",
             "    public void TestMethod() {",
-            line,
+            "string password = \"tempPassword\"; // Only for testing",
             "        // Do something with the password",
             "    }",
             "}"
@@ -75,72 +109,76 @@ public class SecureConfigurationRuleTest {
         when(context.getFilePath()).thenReturn(path);
         when(context.getFileContent()).thenReturn(fileContent);
         
-        // Execute
-        boolean result = rule.isViolatedBy(line, lineNumber, context);
+        // Act
+        boolean result = rule.isViolatedBy(lineContent, lineNumber, context);
         
-        // Verify
-        assertFalse(result, "Should not flag passwords in non-configuration files");
+        // Assert
+        if (expectedViolation) {
+            assertTrue(result, "Should detect insecure configuration in: " + lineContent);
+        } else {
+            assertFalse(result, "Should not flag as insecure: " + lineContent);
+        }
     }
     
-    @Test
-    public void testAcceptsSecureConfiguration() {
-        // Setup
-        String line = "  \"ConnectionStrings\": {";
-        int lineNumber = 3;
-        Path path = Paths.get("appsettings.json");
+    @ParameterizedTest
+    @DisplayName("Should accept secure configurations")
+    @CsvSource({
+        // filename, line number, line content
+        "appsettings.json, 5, '    \"DefaultConnection\": \"${KeyVault:ConnectionString}\"', false",
+        "appsettings.json, 7, '      \"SecretKey\": \"${env:SECRET_KEY}\",', false",
+        "appsettings.json, 8, '      \"ApiKey\": \"${ENVIRONMENT:API_KEY}\"', false",
+        "web.config, 5, '    <add key=\"Password\" value=\"${KeyVault:AdminPassword}\" />', false",
+        "appsettings.json, 10, '      \"ClientId\": \"${Environment:KEY_VAULT_CLIENT_ID}\"', false"
+    })
+    void shouldAcceptSecureConfigurations(String filename, int lineNumber, String lineContent, boolean expectedViolation) {
+        // Arrange
+        Path path = Paths.get(filename);
         
-        List<String> fileContent = Arrays.asList(
-            "{",
-            "  \"KeyVaultSettings\": {",
-            "    \"VaultUri\": \"https://myvault.vault.azure.net/\"",
-            "  },",
-            line,
-            "    \"DefaultConnection\": \"${KeyVault:ConnectionString}\"",
-            "  },",
-            "  \"Azure\": {",
-            "    \"KeyVault\": {",
-            "      \"ClientId\": \"${Environment:KEY_VAULT_CLIENT_ID}\"",
-            "    }",
-            "  }",
-            "}"
-        );
+        List<String> fileContent;
+        if (filename.endsWith(".json")) {
+            fileContent = Arrays.asList(
+                "{",
+                "  \"KeyVaultSettings\": {",
+                "    \"VaultUri\": \"https://myvault.vault.azure.net/\"",
+                "  },",
+                "  \"ConnectionStrings\": {",
+                "    \"DefaultConnection\": \"${KeyVault:ConnectionString}\"",
+                "  },",
+                "  \"Secrets\": {",
+                "      \"SecretKey\": \"${env:SECRET_KEY}\",",
+                "      \"ApiKey\": \"${ENVIRONMENT:API_KEY}\"",
+                "  },",
+                "  \"Azure\": {",
+                "    \"KeyVault\": {",
+                "      \"ClientId\": \"${Environment:KEY_VAULT_CLIENT_ID}\"",
+                "    }",
+                "  }",
+                "}"
+            );
+        } else {
+            fileContent = Arrays.asList(
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?>",
+                "<configuration>",
+                "  <appSettings>",
+                "    <add key=\"ApiUrl\" value=\"https://api.example.com\" />",
+                "    <add key=\"Password\" value=\"${KeyVault:AdminPassword}\" />",
+                "    <add key=\"Username\" value=\"admin\" />",
+                "  </appSettings>",
+                "</configuration>"
+            );
+        }
         
         when(context.getFilePath()).thenReturn(path);
         when(context.getFileContent()).thenReturn(fileContent);
         
-        // Execute
-        boolean result = rule.isViolatedBy(line, lineNumber, context);
+        // Act
+        boolean result = rule.isViolatedBy(lineContent, lineNumber, context);
         
-        // Verify
-        assertFalse(result, "Should not flag secure configuration with key vault references");
-    }
-    
-    @Test
-    public void testAcceptsEnvVarUsage() {
-        // Setup
-        String line = "      \"SecretKey\": \"${env:SECRET_KEY}\",";
-        int lineNumber = 7;
-        Path path = Paths.get("appsettings.json");
-        
-        List<String> fileContent = Arrays.asList(
-            "{",
-            "  \"AppSettings\": {",
-            "    \"ApiUrl\": \"https://api.example.com\",",
-            "    \"Secrets\": {",
-            line,
-            "      \"ApiKey\": \"${env:API_KEY}\"",
-            "    }",
-            "  }",
-            "}"
-        );
-        
-        when(context.getFilePath()).thenReturn(path);
-        when(context.getFileContent()).thenReturn(fileContent);
-        
-        // Execute
-        boolean result = rule.isViolatedBy(line, lineNumber, context);
-        
-        // Verify
-        assertFalse(result, "Should not flag configuration using environment variables");
+        // Assert
+        if (expectedViolation) {
+            assertTrue(result, "Should detect insecure configuration in: " + lineContent);
+        } else {
+            assertFalse(result, "Should not flag as secure: " + lineContent);
+        }
     }
 }
