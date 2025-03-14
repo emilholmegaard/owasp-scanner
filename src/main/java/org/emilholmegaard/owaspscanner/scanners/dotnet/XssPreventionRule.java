@@ -2,6 +2,7 @@ package org.emilholmegaard.owaspscanner.scanners.dotnet;
 
 import org.emilholmegaard.owaspscanner.core.RuleContext;
 
+import java.nio.file.Path;
 import java.util.regex.Pattern;
 
 /**
@@ -35,6 +36,11 @@ public class XssPreventionRule extends AbstractDotNetSecurityRule {
             "(?i)Request\\.|Model\\.|\\[FromBody\\]|\\[FromQuery\\]|" +
             "HttpContext\\.Request|Form\\[|IFormFile|searchTerm|username|message|content");
     
+    // JavaScript-specific XSS patterns
+    private static final Pattern JAVASCRIPT_XSS_PATTERN = Pattern.compile(
+            "(?i)var\\s+\\w+\\s*=\\s*\"<script>\"\\s*\\+|document\\.write\\(.*\\+.*\\)|" +
+            "\\.innerHTML\\s*=|\\$\\(.*\\)\\.html\\(|\\$\\(.*\\)\\.append\\(");
+    
     /**
      * Creates a new XssPreventionRule.
      */
@@ -44,6 +50,20 @@ public class XssPreventionRule extends AbstractDotNetSecurityRule {
     
     @Override
     protected boolean checkViolation(String line, int lineNumber, RuleContext context) {
+        // Check if this is a JavaScript file
+        Path filePath = context.getFilePath();
+        String fileName = filePath.getFileName().toString().toLowerCase();
+        boolean isJavaScriptFile = fileName.endsWith(".js") || fileName.endsWith(".jsx") || fileName.endsWith(".ts");
+        
+        // Special handling for JavaScript files
+        if (isJavaScriptFile || isScriptBlock(line, context)) {
+            if (JAVASCRIPT_XSS_PATTERN.matcher(line).find() || 
+                (line.contains("<script>") && line.contains("+")) ||
+                (line.contains("document.write") && line.contains("+"))) {
+                return true;
+            }
+        }
+        
         // Detect common HTML generation in controllers
         if (line.contains("Content(") && line.contains("\"text/html\"") && 
            (line.contains("+") || line.contains("$"))) {
@@ -62,7 +82,7 @@ public class XssPreventionRule extends AbstractDotNetSecurityRule {
         }
         
         // Detect document.write
-        if (line.contains("document.write")) {
+        if (line.contains("document.write") && line.contains("+")) {
             return true;
         }
         
@@ -84,5 +104,14 @@ public class XssPreventionRule extends AbstractDotNetSecurityRule {
         }
         
         return false;
+    }
+    
+    /**
+     * Determines if the code is within a script block.
+     */
+    private boolean isScriptBlock(String line, RuleContext context) {
+        // Check if this line is in a script block by looking at surrounding context
+        String surroundingCode = String.join("\n", context.getLinesAround(context.getFileContent().indexOf(line), 5));
+        return surroundingCode.contains("<script>") || surroundingCode.contains("<script ");
     }
 }
