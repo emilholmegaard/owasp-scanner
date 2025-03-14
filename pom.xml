@@ -7,7 +7,6 @@
     <groupId>org.emilholmegaard</groupId>
     <artifactId>owasp-scanner</artifactId>
     <version>1.0-SNAPSHOT</version>
-
     <name>OWASP Scanner</name>
     <description>Security scanner based on OWASP Cheat Sheet Series</description>
 
