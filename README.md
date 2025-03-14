@@ -2,6 +2,8 @@
 
 A security scanner tool based on the [OWASP Cheat Sheet Series](https://cheatsheetseries.owasp.org/) that helps identify potential security vulnerabilities in your code.
 
+![Build, Test and Release](https://github.com/emilholmegaard/owasp-scanner/workflows/Build,%20Test%20and%20Release/badge.svg)
+
 ## Features
 
 - Scans code for security vulnerabilities based on OWASP guidelines
@@ -28,28 +30,46 @@ The scanner currently checks for the following security issues in .NET code:
 - Java 11 or higher
 - Maven for building the project
 
-## Building
+## Getting Started
 
-To build the project:
+### Option 1: Download the Pre-built JAR
 
-```bash
-mvn clean package
-```
+1. Download the latest JAR file from the [Releases](https://github.com/emilholmegaard/owasp-scanner/releases) page.
+2. Run it directly:
+   ```bash
+   java -jar owasp-scanner.jar scan /path/to/your/code
+   ```
 
-This will create an executable JAR file in the `target` directory.
+### Option 2: Build from Source
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/emilholmegaard/owasp-scanner.git
+   cd owasp-scanner
+   ```
+
+2. Build with Maven:
+   ```bash
+   mvn clean package
+   ```
+
+3. Run the scanner:
+   ```bash
+   java -jar target/owasp-scanner.jar scan /path/to/your/code
+   ```
 
 ## Usage
 
 Run the scanner on a directory:
 
 ```bash
-java -jar target/owasp-scanner.jar scan /path/to/your/code
+java -jar owasp-scanner.jar scan /path/to/your/code
 ```
 
 Specify an output file for the report:
 
 ```bash
-java -jar target/owasp-scanner.jar scan /path/to/your/code output-report.json
+java -jar owasp-scanner.jar scan /path/to/your/code output-report.json
 ```
 
 ## Architecture
@@ -70,6 +90,13 @@ To add support for a new technology (e.g., Python, Java):
 1. Implement the `SecurityScanner` interface for the new technology
 2. Define technology-specific security rules
 3. Register the new scanner with the engine
+
+## CI/CD Pipeline
+
+This project uses GitHub Actions for continuous integration and deployment:
+
+- **Build & Test**: Runs on every push and pull request to verify the code
+- **Release**: Creates a new release with the JAR file when changes are pushed to the main branch
 
 ## Contributing
 
