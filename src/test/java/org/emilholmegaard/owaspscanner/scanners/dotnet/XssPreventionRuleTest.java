@@ -31,7 +31,7 @@ public class XssPreventionRuleTest {
     public void testVulnerableHtmlRaw() {
         // Setup
         String line = "@Html.Raw(Model.UserInput)";
-        int lineNumber = 10;
+        int lineNumber = 4;
         
         List<String> fileContent = Arrays.asList(
             "@model UserViewModel",
@@ -44,8 +44,8 @@ public class XssPreventionRuleTest {
         );
         
         when(context.getFileContent()).thenReturn(fileContent);
-        when(context.getLinesAround(lineNumber, 5)).thenReturn(
-            fileContent.subList(Math.max(0, lineNumber - 5), Math.min(fileContent.size(), lineNumber + 5))
+        when(context.getLinesAround(eq(lineNumber), anyInt())).thenReturn(
+            fileContent.subList(Math.max(0, lineNumber - 3), Math.min(fileContent.size(), fileNumber + 3))
         );
         
         // Execute
@@ -59,7 +59,7 @@ public class XssPreventionRuleTest {
     public void testVulnerableResponseWrite() {
         // Setup
         String line = "Response.Write(userInput);";
-        int lineNumber = 15;
+        int lineNumber = 3;
         
         List<String> fileContent = Arrays.asList(
             "public ActionResult DisplayMessage(string userInput)",
@@ -71,8 +71,8 @@ public class XssPreventionRuleTest {
         );
         
         when(context.getFileContent()).thenReturn(fileContent);
-        when(context.getLinesAround(lineNumber, 5)).thenReturn(
-            fileContent.subList(Math.max(0, lineNumber - 5), Math.min(fileContent.size(), lineNumber + 5))
+        when(context.getLinesAround(eq(lineNumber), anyInt())).thenReturn(
+            fileContent.subList(0, fileContent.size())
         );
         
         // Execute
@@ -86,7 +86,7 @@ public class XssPreventionRuleTest {
     public void testSafeEncoding() {
         // Setup
         String line = "var encodedOutput = HtmlEncoder.Encode(userInput);";
-        int lineNumber = 12;
+        int lineNumber = 3;
         
         List<String> fileContent = Arrays.asList(
             "public string SafeDisplay(string userInput)",
@@ -98,8 +98,8 @@ public class XssPreventionRuleTest {
         );
         
         when(context.getFileContent()).thenReturn(fileContent);
-        when(context.getLinesAround(lineNumber, 5)).thenReturn(
-            fileContent.subList(Math.max(0, lineNumber - 5), Math.min(fileContent.size(), lineNumber + 5))
+        when(context.getLinesAround(eq(lineNumber), anyInt())).thenReturn(
+            fileContent.subList(0, fileContent.size())
         );
         
         // Execute
@@ -113,7 +113,7 @@ public class XssPreventionRuleTest {
     public void testAutoEncodingWithRazor() {
         // Setup
         String line = "<div>@Model.Message</div>";
-        int lineNumber = 8;
+        int lineNumber = 2;
         
         List<String> fileContent = Arrays.asList(
             "@model MessageViewModel",
@@ -123,8 +123,8 @@ public class XssPreventionRuleTest {
         );
         
         when(context.getFileContent()).thenReturn(fileContent);
-        when(context.getLinesAround(lineNumber, 5)).thenReturn(
-            fileContent.subList(Math.max(0, lineNumber - 5), Math.min(fileContent.size(), lineNumber + 5))
+        when(context.getLinesAround(eq(lineNumber), anyInt())).thenReturn(
+            fileContent.subList(0, fileContent.size())
         );
         
         // Execute
