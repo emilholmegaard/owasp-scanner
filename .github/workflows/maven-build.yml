@@ -1,4 +1,4 @@
-name: Build, Test and Release
+name: Build and Test
 
 on:
   push:
@@ -11,8 +11,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Needed for creating releases
-      
+      contents: write # Required for the release creation step
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
@@ -27,35 +27,35 @@ jobs:
     - name: Extract version from pom.xml
       id: get_version
       run: |
-        VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+        VERSION=$(grep -m 1 "<version>" pom.xml | sed -n 's/.*<version>\(.*\)<\/version>.*/\1/p')
         echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "VERSION=$VERSION"
     
     - name: Build with Maven
       run: mvn -B package --file pom.xml
     
     - name: Run tests
       run: mvn -B test
-      
-    - name: Verify JAR exists
-      run: |
-        if [ ! -f target/owasp-scanner.jar ]; then
-          echo "ERROR: JAR file not found at target/owasp-scanner.jar"
-          exit 1
-        fi
-        echo "JAR file found and ready for release"
-        ls -la target/
+    
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: owasp-scanner-jar
+        path: target/owasp-scanner.jar
     
     - name: Create Release
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      id: create_release
       uses: softprops/action-gh-release@v1
       with:
         tag_name: v${{ env.VERSION }}-${{ github.run_number }}
-        name: OWASP Scanner v${{ env.VERSION }} (Build ${{ github.run_number }})
+        name: OWASP Scanner v${{ env.VERSION }}-${{ github.run_number }}
         draft: false
         prerelease: false
-        files: target/owasp-scanner.jar
+        files: |
+          target/owasp-scanner.jar
         body: |
-          OWASP Scanner v${{ env.VERSION }} (Build ${{ github.run_number }})
+          OWASP Scanner v${{ env.VERSION }} build ${{ github.run_number }}
           
           ## How to use
           
@@ -63,6 +63,6 @@ jobs:
           java -jar owasp-scanner.jar scan /path/to/your/code
           ```
           
-          ## Changes in this build
-          - Automated build from latest code in main branch
-          - Build created on: ${{ github.event.repository.updated_at }}
+          ## Changelog
+          - Improved security scanning for .NET applications
+          - Bug fixes and performance improvements
