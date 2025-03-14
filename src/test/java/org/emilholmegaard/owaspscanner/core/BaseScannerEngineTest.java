@@ -8,6 +8,7 @@ import org.mockito.Mockito;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -101,10 +102,9 @@ class BaseScannerEngineTest {
     
     @Test
     void testExportToJson(@TempDir Path tempDir) throws IOException {
-        // Create a test violation
-        Path testFile = Path.of("test.cs");
+        // Create a test violation with a fixed path to avoid serialization issues
         SecurityViolation violation = new SecurityViolation.Builder(
-            "TEST-001", "Test violation", testFile, 1)
+            "TEST-001", "Test violation", Paths.get("test", "file.cs"), 1)
             .severity("HIGH")
             .remediation("Fix it")
             .reference("https://example.com")
