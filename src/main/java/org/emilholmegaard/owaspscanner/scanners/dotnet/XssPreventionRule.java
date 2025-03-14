@@ -45,12 +45,19 @@ public class XssPreventionRule extends AbstractDotNetSecurityRule {
     @Override
     protected boolean checkViolation(String line, int lineNumber, RuleContext context) {
         // Check if this is an immediate high-risk pattern
-        boolean isHighRiskPattern = line.matches("(?i).*@Html\\.Raw\\s*\\(.*Request.*\\).*") ||
-                                   line.matches("(?i).*Response\\.Write\\s*\\(.*Request.*\\).*") ||
-                                   line.matches("(?i).*document\\.write\\s*\\(.*\\).*") ||
-                                   (line.contains("innerHtml") && line.contains("="));
+        if (line.contains("@Html.Raw")) {
+            return true;
+        }
         
-        if (isHighRiskPattern) {
+        if (line.contains("Response.Write")) {
+            return true;
+        }
+        
+        if (line.contains("document.write")) {
+            return true;
+        }
+        
+        if (line.contains("innerHtml") && line.contains("=")) {
             return true;
         }
         
