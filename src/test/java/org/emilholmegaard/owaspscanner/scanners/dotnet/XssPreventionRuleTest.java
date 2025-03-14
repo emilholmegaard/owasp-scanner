@@ -2,7 +2,6 @@ package org.emilholmegaard.owaspscanner.scanners.dotnet;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -34,7 +33,10 @@ public class XssPreventionRuleTest extends AbstractRuleTest {
         "3, Response.Write(userInput);",
         "5, document.write(\"<script>\" + data + \"</script>\");",
         "3, element.innerHtml = userContent;",
-        "4, return Content(\"<div>\" + message + \"</div>\", \"text/html\");"
+        "4, return Content(\"<div>\" + message + \"</div>\", \"text/html\");",
+        // Additional cases converted from individual tests
+        "5, return Content(\"<h1>\" + title + \"</h1><div>\" + body + \"</div>\", \"text/html\");",
+        "3, var userScript = \"<script>\" + userInput + \"</script>\";"
     })
     void shouldDetectXssVulnerability(int lineNumber, String vulnerableLine) {
         // Arrange
@@ -63,7 +65,9 @@ public class XssPreventionRuleTest extends AbstractRuleTest {
         "4, @Html.Encode(Model.UserInput)",
         "3, var encodedOutput = HtmlEncoder.Encode(userInput);",
         "3, ViewBag.Output = HttpUtility.HtmlEncode(message);",
-        "4, <div>@Model.SafeContent</div>"
+        "4, <div>@Model.SafeContent</div>",
+        // Additional case converted from individual test
+        "2, <div>@Model.Message</div>"
     })
     void shouldNotDetectXssInSecureCode(int lineNumber, String secureLine) {
         // Arrange
@@ -85,71 +89,55 @@ public class XssPreventionRuleTest extends AbstractRuleTest {
         assertFalse(result, "Should not detect XSS vulnerability in: " + secureLine);
     }
     
-    @Test
-    @DisplayName("Should detect XSS in Content method with HTML")
-    void shouldDetectXssInContentMethodWithHtml() {
+    @ParameterizedTest
+    @DisplayName("Should properly analyze content in different file types")
+    @CsvSource({
+        // filename, line number, content, expected result (true=violation, false=secure)
+        "ContentController.cs, 5, return Content(\"<h1>\" + title + \"</h1><div>\" + body + \"</div>\", \"text/html\");, true",
+        "MessageView.cshtml, 2, <div>@Model.Message</div>, false", 
+        "JavaScriptFile.js, 3, var userScript = \"<script>\" + userInput + \"</script>\";, true"
+    })
+    void shouldAnalyzeContentInDifferentFileTypes(String filename, int lineNumber, String content, boolean expectedViolation) {
         // Arrange
-        String line = "return Content(\"<h1>\" + title + \"</h1><div>\" + body + \"</div>\", \"text/html\");";
-        int lineNumber = 5;
-        List<String> fileContent = codeLines(
-            "public class ContentController : Controller {",
-            "    public ActionResult ShowContent(string title, string body) {",
-            "        // No encoding or validation",
-            "        // Vulnerable to XSS",
-            "        return Content(\"<h1>\" + title + \"</h1><div>\" + body + \"</div>\", \"text/html\");",
-            "    }",
-            "}"
-        );
-        setupTestContext(fileContent, lineNumber, line);
+        List<String> fileContent;
+        if (filename.endsWith(".cshtml")) {
+            fileContent = codeLines(
+                "@model MessageViewModel",
+                "<h1>Message</h1>",
+                "<div>@Model.Message</div>",
+                "<p>Timestamp: @DateTime.Now</p>"
+            );
+        } else if (filename.endsWith(".js")) {
+            fileContent = codeLines(
+                "@model UserViewModel",
+                "<script>",
+                "    // Dangerous - direct insertion of user input into JavaScript",
+                "    var userScript = \"<script>\" + userInput + \"</script>\";",
+                "    $(\"#result\").html(userScript);",
+                "</script>"
+            );
+        } else {
+            fileContent = codeLines(
+                "public class ContentController : Controller {",
+                "    public ActionResult ShowContent(string title, string body) {",
+                "        // No encoding or validation",
+                "        // Vulnerable to XSS",
+                "        return Content(\"<h1>\" + title + \"</h1><div>\" + body + \"</div>\", \"text/html\");",
+                "    }",
+                "}"
+            );
+        }
+        
+        setupTestContext(fileContent, lineNumber, content, Paths.get(filename));
         
         // Act
-        boolean result = rule.isViolatedBy(line, lineNumber, context);
+        boolean result = rule.isViolatedBy(content, lineNumber, context);
         
         // Assert
-        assertTrue(result, "Should detect XSS in Content method returning HTML");
-    }
-    
-    @Test
-    @DisplayName("Should not flag auto-encoded Razor syntax")
-    void shouldNotFlagAutoEncodedRazorSyntax() {
-        // Arrange
-        String line = "<div>@Model.Message</div>";
-        int lineNumber = 2;
-        List<String> fileContent = codeLines(
-            "@model MessageViewModel",
-            "<h1>Message</h1>",
-            "<div>@Model.Message</div>",
-            "<p>Timestamp: @DateTime.Now</p>"
-        );
-        setupTestContext(fileContent, lineNumber, line);
-        
-        // Act
-        boolean result = rule.isViolatedBy(line, lineNumber, context);
-        
-        // Assert
-        assertFalse(result, "Should not flag auto-encoded Razor syntax");
-    }
-    
-    @Test
-    @DisplayName("Should detect XSS in JavaScript")
-    void shouldDetectXssInJavaScript() {
-        // Arrange
-        String line = "var userScript = \"<script>\" + userInput + \"</script>\";";
-        int lineNumber = 3;
-        List<String> fileContent = codeLines(
-            "@model UserViewModel",
-            "<script>",
-            "    // Dangerous - direct insertion of user input into JavaScript",
-            "    var userScript = \"<script>\" + userInput + \"</script>\";",
-            "    $(\"#result\").html(userScript);",
-            "</script>"
-        );
-        setupTestContext(fileContent, lineNumber, line);
-        
-        // Act
-        boolean result = rule.isViolatedBy(line, lineNumber, context);
-        
-        // Assert
-        assertTrue(result, "Should detect XSS in JavaScript");
+        if (expectedViolation) {
+            assertTrue(result, "Should detect XSS vulnerability in: " + content);
+        } else {
+            assertFalse(result, "Should not detect XSS vulnerability in: " + content);
+        }
     }
 }
