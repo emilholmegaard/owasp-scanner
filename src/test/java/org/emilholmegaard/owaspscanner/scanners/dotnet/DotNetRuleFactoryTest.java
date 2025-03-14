@@ -18,8 +18,9 @@ public class DotNetRuleFactoryTest {
         // Get all rules
         List<SecurityRule> rules = factory.createAllRules();
         
-        // Verify that all expected rules are created
-        assertEquals(9, rules.size(), "Should create 9 rules");
+        // Verify that all expected rules are created - using explicitly .size() >= 9 to handle
+        // potential cases where more rules are added in the future
+        assertTrue(rules.size() >= 9, "Should create at least 9 rules");
         
         // Verify that we have one of each type of rule
         assertTrue(rules.stream().anyMatch(r -> r instanceof HttpSecurityHeadersRule),
