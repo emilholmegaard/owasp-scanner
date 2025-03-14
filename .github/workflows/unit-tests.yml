@@ -1,34 +1,35 @@
 name: Unit Tests
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:  # Allow manual trigger
+  workflow_call:
+    # Optional: Define inputs if needed
+    inputs:
+      java-version:
+        description: 'Java version to use'
+        required: false
+        default: '21'
+        type: string
 
 jobs:
-  unit-tests:
+  run-tests:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v3
     
-    - name: Set up JDK 21
-      uses: actions/setup-java@v4
+    - name: Set up JDK
+      uses: actions/setup-java@v3
       with:
-        java-version: '21'
+        java-version: ${{ inputs.java-version }}
         distribution: 'temurin'
-        cache: maven
+        cache: 'maven'
     
     - name: Run unit tests
-      run: mvn -B test
+      run: mvn clean test
     
-    - name: Upload test results
-      if: always()
-      uses: actions/upload-artifact@v4
+    - name: Upload test reports
+      if: failure()
+      uses: actions/upload-artifact@v3
       with:
-        name: unit-test-results
-        path: target/surefire-reports/
-        retention-days: 7
+        name: test-reports
+        path: target/surefire-reports
