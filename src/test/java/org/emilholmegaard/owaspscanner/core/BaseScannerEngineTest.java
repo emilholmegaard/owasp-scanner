@@ -104,9 +104,9 @@ class BaseScannerEngineTest {
     
     @Test
     void testExportToJson(@TempDir Path tempDir) throws IOException {
-        // Create a test violation
+        // Create a test violation with a string-based file path
         Path testFilePath = tempDir.resolve("test.cs");
-        Files.writeString(testFilePath, "// Test file for violation");
+        Files.writeString(testFilePath, "// Test file");
         
         SecurityViolation violation = new SecurityViolation(
             "TEST-001", "Test violation", testFilePath, 1, 
@@ -126,7 +126,6 @@ class BaseScannerEngineTest {
         assertTrue(content.contains("HIGH"));
         assertTrue(content.contains("Fix it"));
         assertTrue(content.contains("https://example.com"));
-        // Check for filePathString instead of filePath
         assertTrue(content.contains("filePathString"));
     }
 }
