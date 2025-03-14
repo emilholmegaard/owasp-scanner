@@ -1,0 +1,78 @@
+name: Build, Test and Release
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up JDK 11
+      uses: actions/setup-java@v3
+      with:
+        java-version: '11'
+        distribution: 'temurin'
+        cache: maven
+    
+    - name: Build with Maven
+      run: mvn -B package --file pom.xml
+    
+    - name: Run tests
+      run: mvn -B test
+    
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: owasp-scanner-jar
+        path: target/owasp-scanner.jar
+    
+  release:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'  # Only on push to main
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download JAR artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: owasp-scanner-jar
+        path: ./
+    
+    - name: Get Version
+      id: get_version
+      run: |
+        echo "VERSION=$(grep -o '<version>.*</version>' pom.xml | head -1 | sed 's/<version>//' | sed 's/<\/version>//')" >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ steps.get_version.outputs.VERSION }}
+        name: Release v${{ steps.get_version.outputs.VERSION }}
+        draft: false
+        prerelease: false
+        files: |
+          owasp-scanner.jar
+        body: |
+          OWASP Scanner Release v${{ steps.get_version.outputs.VERSION }}
+          
+          ## Changes in this release
+          
+          * Latest version from main branch
+          
+          ## How to use
+          
+          ```bash
+          java -jar owasp-scanner.jar scan /path/to/your/code
+          ```
