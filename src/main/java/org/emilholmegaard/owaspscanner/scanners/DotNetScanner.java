@@ -134,12 +134,9 @@ public class DotNetScanner implements SecurityScanner {
             "https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html#sql-injection",
             Pattern.compile("(?i)SqlCommand|ExecuteReader|ExecuteNonQuery|ExecuteScalar|DbCommand"),
             (line, lineNumber, context) -> {
-                // Simple check for SQL injection patterns in test environment
-                if (context.getFilePath().toString().contains("Test") || 
-                    context.getFilePath().toString().contains("test")) {
-                    if (line.contains("SqlCommand") && line.contains("+")) {
-                        return true;
-                    }
+                // Always check for basic SQL injection regardless of file path
+                if (line.contains("SqlCommand") && line.contains("+")) {
+                    return true;
                 }
                 
                 // Regular check for production code
@@ -149,7 +146,7 @@ public class DotNetScanner implements SecurityScanner {
                     String surroundingCode = String.join("\n", surroundingLines);
                     
                     // Check for string concatenation or interpolation in SQL
-                    boolean hasStringConcatenation = surroundingCode.matches("(?i).*\\+.*|.*string\\.Format.*|.*\\$\".*|.*\\$@\".*");
+                    boolean hasStringConcatenation = surroundingCode.matches("(?i).*\\+.*|.*string\\.Format.*|.*\\$\\\".*|.*\\$@\\\".*");
                     
                     // Check for parameter usage
                     boolean hasParameters = surroundingCode.matches("(?i).*Parameters\\.Add.*|.*Parameters\\.AddWithValue.*");
@@ -205,7 +202,7 @@ public class DotNetScanner implements SecurityScanner {
             "MEDIUM",
             "Ensure sensitive settings are properly secured in configuration",
             "https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html#data-protection-configuration-net-462",
-            Pattern.compile("(?i)<connectionStrings|<appSettings|\"ConnectionStrings\"|secrets\\.json"),
+            Pattern.compile("(?i)<connectionStrings|<appSettings|\\\"ConnectionStrings\\\"|secrets\\.json"),
             (line, lineNumber, context) -> {
                 String fileName = context.getFilePath().getFileName().toString().toLowerCase();
                 
