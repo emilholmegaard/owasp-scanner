@@ -25,8 +25,14 @@ public class SqlInjectionRule extends AbstractDotNetSecurityRule {
         "FromSqlRaw\\(.*\\+|" +  // Entity Framework raw SQL with concatenation
         "ExecuteSqlRaw(Async)?\\(.*\\+|" +  // ExecuteSqlRaw methods
         "SqlCommand\\(.*\\+|" +  // SqlCommand with concatenation
-        "LIKE\\s*'%\\s*\\+|" +  // LIKE query with concatenation
-        "WHERE.*=\\s*'.*\\+)" // Generic WHERE clause with concatenation
+        "LIKE\\s*'%\\s*\\+\\s*\\w+\\s*\\+\\s*%'|" +  // LIKE query with concatenation
+        "WHERE.*=\\s*'.*\\+|" +  // Generic WHERE clause with concatenation
+        "string\\s+query\\s*=.*LIKE.*\\+)" // Query string with LIKE and concatenation
+    );
+    
+    // Pattern to identify user input variables
+    private static final Pattern USER_INPUT_PATTERN = Pattern.compile(
+        "(?i)(username|email|searchTerm|input)"
     );
     
     public SqlInjectionRule() {
@@ -35,26 +41,27 @@ public class SqlInjectionRule extends AbstractDotNetSecurityRule {
     
     @Override
     protected boolean checkViolation(String line, int lineNumber, RuleContext context) {
-        // Additional context check
+        // Detect SQL injection pattern
         if (SQL_INJECTION_PATTERN.matcher(line).find()) {
-            // Specific scenarios to check
-            boolean hasRawSqlMethods = line.contains("FromSqlRaw") || 
-                                       line.contains("ExecuteSqlRaw") ||
-                                       line.contains("SqlCommand");
+            // Check for user input
+            boolean hasUserInput = USER_INPUT_PATTERN.matcher(line).find();
             
-            // Check for concatenation with variables like username, email
-            boolean hasUserInput = line.contains("username") || 
-                                   line.contains("email") || 
-                                   line.contains("searchTerm");
+            // Check if it's a LIKE query with concatenation
+            boolean isLikeQueryWithConcatenation = 
+                line.contains("LIKE") && 
+                line.contains("'%") && 
+                line.contains("+") && 
+                line.contains("%'");
             
-            // Exclude safe patterns
-            boolean hasSafeParameters = line.contains("Parameters.AddWithValue") ||
-                                        line.contains("FromSqlInterpolated") ||
-                                        line.contains(".Where(") ||
-                                        line.contains(".FirstOrDefault(");
+            // Check for safe practices
+            boolean hasSafeParameters = 
+                line.contains("Parameters.AddWithValue") ||
+                line.contains("FromSqlInterpolated") ||
+                line.contains(".Where(") ||
+                line.contains(".FirstOrDefault(");
             
-            // Flag as vulnerability if unsafe methods are used with user input
-            return hasRawSqlMethods && hasUserInput && !hasSafeParameters;
+            // Flag as vulnerability if user input is present and no safe practices are used
+            return (hasUserInput || isLikeQueryWithConcatenation) && !hasSafeParameters;
         }
         
         return false;
