@@ -2,7 +2,6 @@ package org.emilholmegaard.owaspscanner.scanners;
 
 import org.emilholmegaard.owaspscanner.core.SecurityViolation;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -50,7 +49,6 @@ class DotNetScannerTest {
     }
     
     @Test
-    @Disabled("This test is unstable in CI environment")
     void testScanFileWithSqlInjectionVulnerability(@TempDir Path tempDir) throws IOException {
         // Create a temporary file with a SQL injection vulnerability
         Path testFile = tempDir.resolve("TestController.cs");
