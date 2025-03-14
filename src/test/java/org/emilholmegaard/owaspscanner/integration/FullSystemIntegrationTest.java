@@ -139,7 +139,7 @@ public class FullSystemIntegrationTest {
         String content = 
             "{\n" +
             "  \"ConnectionStrings\": {\n" +
-            "    \"DefaultConnection\": \"Server=myServerAddress;Database=myDataBase;User Id=myUsername;Password=PlainTextPassword123!;\"\n" +
+            "    \"DefaultConnection\": \"Server=myServerAddress;Database=myDataBase;User Id=myUsername;Password=PlainTextPassword123!\"\n" +
             "  },\n" +
             "  \"ApiSettings\": {\n" +
             "    \"ApiKey\": \"c8e5f279e4c94b1a96a0f6352431e9ee\",\n" +
@@ -209,7 +209,7 @@ public class FullSystemIntegrationTest {
             "            using (var conn = new SqlConnection(connectionString)) {\n" +
             "                conn.Open();\n" +
             "                var cmd = new SqlCommand(\"SELECT * FROM Products WHERE Name LIKE @SearchTerm\", conn);\n" +
-            "                cmd.Parameters.AddWithValue(\"@SearchTerm\", \"%" + searchTerm + "%\");\n" +
+            "                cmd.Parameters.AddWithValue(\"@SearchTerm\", \"%" + "\" + searchTerm + \"" + "%\");\n" +
             "                var reader = cmd.ExecuteReader();\n" +
             "                // Process results\n" +
             "            }\n" +
