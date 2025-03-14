@@ -101,7 +101,16 @@ public class XssPreventionRuleTest extends AbstractRuleTest {
             "    $(\"#result\").html(userScript);",
             "</script>"
         );
-        String line = setupTestContext(fileContent, lineNumber, vulnerableLine, Paths.get("JavaScriptFile.js"));
+        
+        // Important: We need to explicitly indicate this is a JavaScript file
+        when(context.getFilePath()).thenReturn(Paths.get("JavaScriptFile.js"));
+        
+        // Get the line indices to simulate the correct context
+        int scriptBlockStart = 1; // The index of the "<script>" line
+        when(context.getFileContent()).thenReturn(fileContent);
+        
+        // Setup the context with the right surrounding lines
+        String line = setupTestContext(fileContent, lineNumber, vulnerableLine);
         
         // Act
         boolean result = rule.isViolatedBy(line, lineNumber, context);
