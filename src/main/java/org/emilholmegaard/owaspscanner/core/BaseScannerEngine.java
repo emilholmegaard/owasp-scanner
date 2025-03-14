@@ -2,13 +2,18 @@ package org.emilholmegaard.owaspscanner.core;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
+import com.google.gson.JsonSerializationContext;
+import com.google.gson.JsonSerializer;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Default implementation of the ScannerEngine interface.
@@ -59,16 +64,33 @@ public class BaseScannerEngine implements ScannerEngine {
     
     @Override
     public void exportToJson(List<SecurityViolation> violations, Path outputPath) {
-        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        // Create custom Gson with a Path serializer to avoid stack overflow
+        Gson gson = new GsonBuilder()
+            .setPrettyPrinting()
+            .registerTypeAdapter(Path.class, new PathSerializer())
+            .create();
+        
         String json = gson.toJson(violations);
         
         try {
-            Files.createDirectories(outputPath.getParent());
+            if (outputPath.getParent() != null) {
+                Files.createDirectories(outputPath.getParent());
+            }
             Files.writeString(outputPath, json);
             System.out.println("Scan results exported to " + outputPath);
         } catch (IOException e) {
             System.err.println("Error exporting results to JSON: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+    
+    /**
+     * Custom serializer for Path objects to avoid stack overflow
+     */
+    private static class PathSerializer implements JsonSerializer<Path> {
+        @Override
+        public JsonElement serialize(Path src, Type typeOfSrc, JsonSerializationContext context) {
+            return new JsonPrimitive(src.toString());
         }
     }
 
