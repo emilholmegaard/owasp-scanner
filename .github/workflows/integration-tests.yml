@@ -8,10 +8,16 @@ on:
         required: false
         default: '21'
         type: string
+    outputs:
+      integration-test-reports:
+        description: 'Path to integration test reports'
+        value: ${{ jobs.run-integration-tests.outputs.integration-test-reports }}
 
 jobs:
   run-integration-tests:
     runs-on: ubuntu-latest
+    outputs:
+      integration-test-reports: ${{ steps.upload-reports.outputs.artifact-id }}
     
     steps:
     - uses: actions/checkout@v3
@@ -29,6 +35,8 @@ jobs:
     - name: Upload integration test reports
       if: failure()
       uses: actions/upload-artifact@v3
+      id: upload-reports
       with:
         name: integration-test-reports
         path: target/failsafe-reports
+        retention-days: 5
