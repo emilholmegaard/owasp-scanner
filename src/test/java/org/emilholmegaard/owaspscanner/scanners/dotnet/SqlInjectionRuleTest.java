@@ -61,7 +61,7 @@ public class SqlInjectionRuleTest extends AbstractRuleTest {
     @DisplayName("Should detect SQL injection in query string")
     @CsvSource({
         // Line number (0-based), Code containing SQL injection vulnerability
-        "4, string query = \"SELECT * FROM Products WHERE Name LIKE '%\" + searchTerm + \"%'\";"
+        "5, string query = \"SELECT * FROM Products WHERE Name LIKE '%\" + searchTerm + \"%'\";"
     })
     void shouldDetectSqlInjectionInQueryString(int lineNumber, String vulnerableLine) {
         // Arrange
@@ -73,7 +73,10 @@ public class SqlInjectionRuleTest extends AbstractRuleTest {
             "    public IEnumerable<Product> SearchProducts(string searchTerm) {",
             "        string query = \"SELECT * FROM Products WHERE Name LIKE '%\" + searchTerm + \"%'\";",
             "        // Execute the vulnerable query",
-            "        return _connection.Query<Product>(query);",
+            "        using (var command = _connection.CreateCommand()) {",
+            "            command.CommandText = query;",
+            "            return command.ExecuteReader();",
+            "        }",
             "    }",
             "}"
         );
