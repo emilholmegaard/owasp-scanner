@@ -45,7 +45,7 @@ public class XssPreventionRuleTest {
         
         when(context.getFileContent()).thenReturn(fileContent);
         when(context.getLinesAround(eq(lineNumber), anyInt())).thenReturn(
-            fileContent.subList(Math.max(0, lineNumber - 3), Math.min(fileContent.size(), fileNumber + 3))
+            fileContent.subList(Math.max(0, lineNumber - 3), Math.min(fileContent.size(), lineNumber + 3))
         );
         
         // Execute
