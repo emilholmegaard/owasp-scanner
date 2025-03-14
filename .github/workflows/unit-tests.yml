@@ -2,17 +2,22 @@ name: Unit Tests
 
 on:
   workflow_call:
-    # Optional: Define inputs if needed
     inputs:
       java-version:
         description: 'Java version to use'
         required: false
         default: '21'
         type: string
+    outputs:
+      test-reports:
+        description: 'Path to test reports'
+        value: ${{ jobs.run-tests.outputs.test-reports }}
 
 jobs:
   run-tests:
     runs-on: ubuntu-latest
+    outputs:
+      test-reports: ${{ steps.upload-reports.outputs.artifact-id }}
     
     steps:
     - uses: actions/checkout@v3
@@ -30,6 +35,8 @@ jobs:
     - name: Upload test reports
       if: failure()
       uses: actions/upload-artifact@v3
+      id: upload-reports
       with:
         name: test-reports
         path: target/surefire-reports
+        retention-days: 5
