@@ -22,6 +22,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.stream.Collectors;
 
 /**
  * Default implementation of the ScannerEngine interface.
@@ -36,25 +38,33 @@ public class BaseScannerEngine implements ScannerEngine {
     
     @Override
     public List<SecurityViolation> scanDirectory(Path directoryPath) {
-        List<SecurityViolation> allViolations = new ArrayList<>();
-        
         try {
+            // Use a thread-safe collection to store violations from parallel processing
+            ConcurrentLinkedQueue<SecurityViolation> violationsQueue = new ConcurrentLinkedQueue<>();
+            
+            // Process files in parallel using parallel streams
             Files.walk(directoryPath)
                 .filter(Files::isRegularFile)
+                .parallel() // Enable parallel processing of files
                 .forEach(filePath -> {
                     try {
-                        allViolations.addAll(scanFile(filePath));
+                        List<SecurityViolation> fileViolations = scanFile(filePath);
+                        // Thread-safe addition of all violations
+                        violationsQueue.addAll(fileViolations);
                     } catch (Exception e) {
                         // Skip problematic files and continue scanning
                         System.err.println("Skipping file: " + filePath + " due to: " + e.getMessage());
                     }
                 });
+            
+            // Convert queue to list for return
+            return new ArrayList<>(violationsQueue);
+            
         } catch (IOException e) {
             System.err.println("Error scanning directory: " + e.getMessage());
             e.printStackTrace();
+            return new ArrayList<>();
         }
-        
-        return allViolations;
     }
     
     @Override
