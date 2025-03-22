@@ -13,6 +13,7 @@ The March 2025 update includes significant improvements to the .NET scanner:
 - **Improved rule accuracy** with better alignment to the [OWASP .NET Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html)
 - **Enhanced test coverage** with unit and integration tests
 - **Factory refactoring** using HashMap and Supplier pattern for cleaner dependency management
+- **Performance testing framework** to track and optimize scanner performance
 
 ## Features
 
@@ -20,6 +21,7 @@ The March 2025 update includes significant improvements to the .NET scanner:
 - Currently supports .NET code scanning
 - Designed with extensibility in mind for future support of other technologies (Python, Java, etc.)
 - Generates JSON reports with detailed findings
+- Performance testing framework to measure and track scanner efficiency
 
 ## Supported Security Checks (.NET)
 
@@ -102,6 +104,58 @@ The .NET scanner uses the following design patterns:
 - **Dependency Injection**: Rules are created through suppliers for loose coupling
 - **Singleton Pattern**: Factory is a singleton for centralized rule management
 
+## Performance Testing Framework
+
+The scanner includes a performance testing framework to measure and track improvements over time. This is particularly useful when implementing optimizations to ensure they have the expected positive impact.
+
+### Running Performance Tests
+
+1. Generate a test dataset:
+   ```bash
+   ./generate-test-dataset.sh
+   ```
+
+2. Run a baseline performance test:
+   ```bash
+   ./benchmark.sh baseline
+   ```
+
+3. After making changes, run another test with a descriptive label:
+   ```bash
+   ./benchmark.sh after-optimize-regex
+   ```
+
+4. Generate a comparison report:
+   ```bash
+   java -cp target/owasp-scanner.jar org.emilholmegaard.owaspscanner.performance.PerformanceSummary \
+     performance-results.csv baseline after-optimize-regex
+   ```
+
+### Performance Metrics Tracked
+
+- **Execution time**: Total scan duration
+- **Memory usage**: Peak and average memory consumption
+- **File count**: Number of files processed
+- **Violation count**: Number of security violations found
+- **System metrics**: CPU cores, max heap size, etc.
+
+### CI/CD Integration
+
+The repository includes GitHub Actions workflows to automatically run performance tests on pull requests labeled with `performance-test`. This helps ensure that performance doesn't regress as new features are added.
+
+To trigger a performance test on a PR:
+1. Label the PR with `performance-test`
+2. The workflow will run automatically and add results as a comment on the PR
+
+### Custom Performance Tests
+
+You can run the performance testing utility directly:
+
+```bash
+java -cp target/owasp-scanner.jar org.emilholmegaard.owaspscanner.performance.PerformanceTest \
+  /path/to/test/directory output-results.csv test-label
+```
+
 ## Extending the Scanner
 
 ### Adding New Rules
@@ -153,3 +207,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Implement more sophisticated code analysis
 - Add CI/CD integration capabilities
 - Support custom rule definitions
+- Further optimize scanner performance
