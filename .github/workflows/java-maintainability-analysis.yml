@@ -1,0 +1,61 @@
+name: Java Maintainability Analysis
+
+on:
+  # Run performance tests on PRs targeting main branch
+  pull_request:
+    branches: [ main ]
+    types: [ labeled ]
+  
+  # Allow manually triggering the workflow
+  workflow_dispatch:
+    inputs:
+      label:
+        description: 'Label for this maintainability run'
+        required: true
+        default: 'manual-run'
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  maintainability-check:
+    if: ${{ false }}
+    name: CodeQL Maintainability Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      # Initialize CodeQL
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: java
+          queries: +security-and-quality
+          config-file: ./.github/codeql/codeql-config.yml
+
+      # Autobuild attempts to build any compiled languages
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      # Run the CodeQL analysis
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:java"
+
+      # Save analysis results
+      - name: Upload SARIF results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
