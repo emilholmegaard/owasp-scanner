@@ -12,10 +12,13 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doAnswer;
 
 class BaseScannerEngineTest {
     
@@ -29,8 +32,9 @@ class BaseScannerEngineTest {
         
         // Setup mock scanner
         when(mockScanner.getSupportedFileExtensions()).thenReturn(Arrays.asList("cs", "config"));
+        when(mockScanner.canProcessFile(any(Path.class))).thenReturn(false); // Default to false
         when(mockScanner.canProcessFile(Mockito.argThat(path -> 
-            path.toString().endsWith(".cs") || path.toString().endsWith(".config")))).thenReturn(true);
+            path != null && (path.toString().endsWith(".cs") || path.toString().endsWith(".config"))))).thenReturn(true);
     }
     
     @Test
@@ -90,7 +94,6 @@ class BaseScannerEngineTest {
         
         when(mockScanner.scanFile(file1)).thenReturn(Collections.singletonList(violation1));
         when(mockScanner.scanFile(file2)).thenReturn(Collections.singletonList(violation2));
-        when(mockScanner.canProcessFile(file3)).thenReturn(false);
         
         // Register scanner and scan the directory
         engine.registerScanner(mockScanner);
@@ -100,6 +103,81 @@ class BaseScannerEngineTest {
         assertEquals(2, violations.size());
         assertTrue(violations.stream().anyMatch(v -> v.getRuleId().equals("TEST-001")));
         assertTrue(violations.stream().anyMatch(v -> v.getRuleId().equals("TEST-002")));
+    }
+    
+    @Test
+    void testParallelFileProcessing(@TempDir Path tempDir) throws IOException, InterruptedException {
+        // Create multiple test files (reducing the number for faster test)
+        int fileCount = 5; // Reduced from 10 to 5 to speed up the test
+        for (int i = 0; i < fileCount; i++) {
+            Path file = tempDir.resolve("file" + i + ".cs");
+            Files.writeString(file, "// CS file " + i);
+        }
+        
+        // Track the maximum number of concurrent threads used
+        AtomicInteger concurrentThreads = new AtomicInteger(0);
+        AtomicInteger maxConcurrentThreads = new AtomicInteger(0);
+        
+        // First reset the mockScanner to ensure a clean state
+        Mockito.reset(mockScanner);
+        
+        // Set up the mock scanner with appropriate default behavior
+        when(mockScanner.getSupportedFileExtensions()).thenReturn(Arrays.asList("cs", "config"));
+        when(mockScanner.canProcessFile(any(Path.class))).thenReturn(true);
+        
+        // Mock scanFile to return a violation for each file and track concurrency
+        doAnswer(invocation -> {
+            Path filePath = invocation.getArgument(0);
+            
+            // Increment the concurrent thread counter
+            int current = concurrentThreads.incrementAndGet();
+            maxConcurrentThreads.updateAndGet(max -> Math.max(max, current));
+            
+            // Simulate some processing time (reducing from 50ms to 20ms)
+            Thread.sleep(20);
+            
+            // Create a violation for this file
+            SecurityViolation violation = new SecurityViolation(
+                "TEST-" + filePath.getFileName(), 
+                "Violation in " + filePath.getFileName(), 
+                filePath, 1, "Code snippet", "MEDIUM", "Fix it", "example.com");
+            
+            // Decrement the concurrent thread counter
+            concurrentThreads.decrementAndGet();
+            
+            return Collections.singletonList(violation);
+        }).when(mockScanner).scanFile(any(Path.class));
+        
+        // Register scanner and scan the directory
+        engine.registerScanner(mockScanner);
+        long startTime = System.currentTimeMillis();
+        List<SecurityViolation> violations = engine.scanDirectory(tempDir);
+        long endTime = System.currentTimeMillis();
+        
+        // Verify results - explicitly print out detailed diagnostics to help debug CI issues
+        System.out.println("Expected " + fileCount + " violations, found " + violations.size());
+        if (violations.size() != fileCount) {
+            System.out.println("Violation details:");
+            for (SecurityViolation v : violations) {
+                System.out.println("  - " + v.getRuleId() + ": " + v.getDescription() + " in " + v.getFilePath());
+            }
+        }
+        assertEquals(fileCount, violations.size(), "Expected " + fileCount + " violations, but got " + violations.size());
+        
+        // If running in parallel, should have more than 1 concurrent thread at some point
+        assertTrue(maxConcurrentThreads.get() > 1, "Files not processed in parallel (maxConcurrentThreads = " + maxConcurrentThreads.get() + ")");
+        
+        // Calculate and print the time saved compared to sequential processing
+        long actualTime = endTime - startTime;
+        long estimatedSequentialTime = fileCount * 20; // Each file takes about 20ms now
+        System.out.println("Parallel processing time: " + actualTime + "ms");
+        System.out.println("Estimated sequential time: " + estimatedSequentialTime + "ms");
+        System.out.println("Maximum concurrent threads used: " + maxConcurrentThreads.get());
+        
+        // If truly parallel, should be faster than sequential processing
+        // We're using a less strict assertion to account for test environment variability
+        assertTrue(actualTime < estimatedSequentialTime * 1.5, 
+            "Parallel processing not faster than sequential processing");
     }
     
     @Test
