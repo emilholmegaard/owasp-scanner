@@ -118,8 +118,14 @@ class BaseScannerEngineTest {
         AtomicInteger concurrentThreads = new AtomicInteger(0);
         AtomicInteger maxConcurrentThreads = new AtomicInteger(0);
         
-        // Mock the scanner to simulate work and track concurrency
-        // Use a shorter sleep time to avoid timeouts in CI environments
+        // First reset the mockScanner to ensure a clean state
+        Mockito.reset(mockScanner);
+        
+        // Set up the mock scanner with appropriate default behavior
+        when(mockScanner.getSupportedFileExtensions()).thenReturn(Arrays.asList("cs", "config"));
+        when(mockScanner.canProcessFile(any(Path.class))).thenReturn(true);
+        
+        // Mock scanFile to return a violation for each file and track concurrency
         doAnswer(invocation -> {
             Path filePath = invocation.getArgument(0);
             
@@ -142,19 +148,20 @@ class BaseScannerEngineTest {
             return Collections.singletonList(violation);
         }).when(mockScanner).scanFile(any(Path.class));
         
-        // Make sure all files can be processed by our mock scanner
-        // First we clear the previous setup
-        Mockito.reset(mockScanner);
-        when(mockScanner.getSupportedFileExtensions()).thenReturn(Arrays.asList("cs", "config"));
-        when(mockScanner.canProcessFile(any(Path.class))).thenReturn(true);
-        
         // Register scanner and scan the directory
         engine.registerScanner(mockScanner);
         long startTime = System.currentTimeMillis();
         List<SecurityViolation> violations = engine.scanDirectory(tempDir);
         long endTime = System.currentTimeMillis();
         
-        // Verify results
+        // Verify results - explicitly print out detailed diagnostics to help debug CI issues
+        System.out.println("Expected " + fileCount + " violations, found " + violations.size());
+        if (violations.size() != fileCount) {
+            System.out.println("Violation details:");
+            for (SecurityViolation v : violations) {
+                System.out.println("  - " + v.getRuleId() + ": " + v.getDescription() + " in " + v.getFilePath());
+            }
+        }
         assertEquals(fileCount, violations.size(), "Expected " + fileCount + " violations, but got " + violations.size());
         
         // If running in parallel, should have more than 1 concurrent thread at some point
