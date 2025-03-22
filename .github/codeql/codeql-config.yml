@@ -1,0 +1,8 @@
+name: "Java Maintainability Config"
+
+queries:
+  - uses: security-and-quality  # Include standard security and quality queries
+  - name: Custom Maintainability Queries
+    uses: ./.github/codeql/custom-queries/maintainability  
+  - name: Code Duplication Queries
+    uses: ./.github/codeql/custom-queries/duplication
