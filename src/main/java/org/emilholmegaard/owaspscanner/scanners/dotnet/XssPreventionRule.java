@@ -21,13 +21,14 @@ public class XssPreventionRule extends AbstractDotNetSecurityRule {
     // Comprehensive XSS detection pattern with bounded quantifiers to prevent catastrophic backtracking
     private static final Pattern XSS_PATTERN = Pattern.compile(
         "(?i)" +
-        "(Content\\\\([^)]{0,200}[\\\"']text/html[\\\"'][^)]{0,200}\\\\+|" +  // Bounded to 200 chars
+        "(Content\\\\([^)]{0,200}[\\\"']text/html[\\\"'][^)]{0,200}\\\\+|" +  // Content method with HTML and concatenation
         "@Html\\\\.Raw|Response\\\\.Write|document\\\\.write|" +  // Unsafe output methods
         "innerHTML\\\\s*=|" +  // Direct innerHTML assignment
         "\\\\+\\\\s*[\\\\w.]{1,30}\\\\s*\\\\+|" +  // String concatenation bounded to 30 chars
         "string\\\\.Format\\\\([^)]{0,200}%s[^)]{0,200}\\\\)|" +  // Bounded string formatting
         "HtmlString|MvcHtmlString|" +  // Potentially unsafe HTML generation
-        "return\\\\s+Content\\\\([^)]{0,200}<[^>]{0,100}\\\\+)" // Bounded Content return with HTML
+        "return\\\\s+Content\\\\([^)]{0,200}<[^>]{0,100}\\\\+)" +  // Bounded Content return with HTML
+        ")"  // Closing parenthesis for the entire group
     );
     
     // Pattern for user input detection
