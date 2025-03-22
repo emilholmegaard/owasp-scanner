@@ -57,8 +57,11 @@ public class PerformanceTest {
      * @param testDirectory Directory to scan
      * @param outputCsv CSV file to append results to
      * @param testLabel Label to identify this test run
+     * @throws IOException If there is an error reading or writing files
+     * @throws InterruptedException If thread is interrupted during sleep
      */
-    public static void runPerformanceTest(String testDirectory, String outputCsv, String testLabel) throws IOException {
+    public static void runPerformanceTest(String testDirectory, String outputCsv, String testLabel) 
+            throws IOException, InterruptedException {
         Path directoryPath = Paths.get(testDirectory).normalize();
         File resultsFile = new File(outputCsv);
         boolean fileExists = resultsFile.exists();
@@ -124,6 +127,8 @@ public class PerformanceTest {
      * 
      * @param directoryPath Directory to scan
      * @return Collected performance metrics
+     * @throws IOException If there is an error reading files
+     * @throws InterruptedException If thread is interrupted during sleep
      */
     private static PerformanceMetrics testScanPerformance(Path directoryPath) throws IOException, InterruptedException {
         // Set up the scanner
