@@ -1,0 +1,142 @@
+name: Performance Tests
+
+on:
+  # Run performance tests on PRs targeting main branch
+  pull_request:
+    branches: [ main ]
+    types: [ labeled ]
+  
+  # Allow manually triggering the workflow
+  workflow_dispatch:
+    inputs:
+      label:
+        description: 'Label for this performance test run'
+        required: true
+        default: 'manual-run'
+
+jobs:
+  performance-test:
+    # Only run if PR has 'performance-test' label or was manually triggered
+    if: ${{ github.event.label.name == 'performance-test' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up JDK 21
+      uses: actions/setup-java@v3
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: maven
+    
+    - name: Create test dataset directory
+      run: mkdir -p test-dataset
+    
+    - name: Generate test dataset
+      run: |
+        # Copy test files from the test directory to create a larger dataset for performance testing
+        cp -r src/test/resources/* test-dataset/ || true
+        
+        # Create a larger dataset by replicating test files
+        for i in {1..10}; do
+          mkdir -p test-dataset/generated-$i
+          for file in $(find src/test/java -name "*.java"); do
+            cp "$file" "test-dataset/generated-$i/$(basename "$file" .java)-$i.java"
+          done
+        done
+        
+        # Create some synthetic C# files with known vulnerability patterns
+        mkdir -p test-dataset/csharp-samples
+        
+        # Create SQL injection sample
+        cat > test-dataset/csharp-samples/SqlInjectionSample.cs << EOF
+        using System;
+        using System.Data.SqlClient;
+        
+        namespace Samples {
+            public class SqlInjectionSample {
+                public void BadMethod(string userInput) {
+                    var connection = new SqlConnection("connection_string");
+                    var query = "SELECT * FROM Users WHERE Username = '" + userInput + "'";
+                    var command = new SqlCommand(query, connection);
+                    // Execute query
+                }
+            }
+        }
+        EOF
+        
+        # Create XSS sample
+        cat > test-dataset/csharp-samples/XssSample.cs << EOF
+        using System;
+        using System.Web.Mvc;
+        
+        namespace Samples {
+            public class XssController : Controller {
+                public ActionResult Search(string term) {
+                    ViewBag.SearchTerm = term; // Unencoded
+                    return View();
+                }
+                
+                public ActionResult RenderHtml(string content) {
+                    return Content("<div>" + content + "</div>", "text/html");
+                }
+            }
+        }
+        EOF
+        
+        # Count files in the dataset
+        find test-dataset -type f | wc -l
+    
+    - name: Build project
+      run: mvn clean package -DskipTests
+    
+    - name: Run performance tests
+      run: |
+        # Get test label (from workflow dispatch input or PR branch name)
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          TEST_LABEL="${{ github.event.inputs.label }}"
+        else
+          TEST_LABEL="${{ github.head_ref }}"
+        fi
+        
+        # Run performance test with consistent heap size
+        java -Xmx512m -cp target/owasp-scanner.jar org.emilholmegaard.owaspscanner.performance.PerformanceTest \
+          "test-dataset" "performance-results.csv" "$TEST_LABEL-run1"
+        
+        java -Xmx512m -cp target/owasp-scanner.jar org.emilholmegaard.owaspscanner.performance.PerformanceTest \
+          "test-dataset" "performance-results.csv" "$TEST_LABEL-run2"
+        
+        java -Xmx512m -cp target/owasp-scanner.jar org.emilholmegaard.owaspscanner.performance.PerformanceTest \
+          "test-dataset" "performance-results.csv" "$TEST_LABEL-run3"
+    
+    - name: Generate performance summary
+      run: |
+        java -cp target/owasp-scanner.jar org.emilholmegaard.owaspscanner.performance.PerformanceSummary \
+          "performance-results.csv" > performance-summary.txt
+        
+        cat performance-summary.txt
+    
+    - name: Upload performance results
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-results
+        path: |
+          performance-results.csv
+          performance-summary.txt
+    
+    - name: Add performance summary as PR comment
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{secrets.GITHUB_TOKEN}}
+        script: |
+          const fs = require('fs');
+          const summaryText = fs.readFileSync('performance-summary.txt', 'utf8');
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: '## Performance Test Results\n\n```\n' + summaryText + '\n```\n\nSee the workflow run for more details.'
+          })
