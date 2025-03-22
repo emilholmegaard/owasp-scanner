@@ -18,29 +18,29 @@ public class XssPreventionRule extends AbstractDotNetSecurityRule {
     private static final String REFERENCE = 
             "https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html#xss-prevention";
     
-    // Comprehensive XSS detection pattern
+    // Comprehensive XSS detection pattern with bounded quantifiers to prevent catastrophic backtracking
     private static final Pattern XSS_PATTERN = Pattern.compile(
         "(?i)" +
-        "(Content\\(.*[\"']text/html[\"'].*\\+.*\\)|" +  // Content method with HTML and concatenation
-        "@Html\\.Raw|Response\\.Write|document\\.write|" +  // Unsafe output methods
-        "innerHTML\\s*=|" +  // Direct innerHTML assignment
-        "\\+\\s*[\\w.]+\\s*\\+|" +  // String concatenation 
-        "string\\.Format\\(.*%s.*\\)|" +  // Potential string formatting
+        "(Content\\\\([^)]{0,200}[\\\"']text/html[\\\"'][^)]{0,200}\\\\+|" +  // Bounded to 200 chars
+        "@Html\\\\.Raw|Response\\\\.Write|document\\\\.write|" +  // Unsafe output methods
+        "innerHTML\\\\s*=|" +  // Direct innerHTML assignment
+        "\\\\+\\\\s*[\\\\w.]{1,30}\\\\s*\\\\+|" +  // String concatenation bounded to 30 chars
+        "string\\\\.Format\\\\([^)]{0,200}%s[^)]{0,200}\\\\)|" +  // Bounded string formatting
         "HtmlString|MvcHtmlString|" +  // Potentially unsafe HTML generation
-        "return\\s+Content\\(.*<.*\\+.*>.*\\))"  // Content return with HTML and concatenation
+        "return\\\\s+Content\\\\([^)]{0,200}<[^>]{0,100}\\\\+)" // Bounded Content return with HTML
     );
     
     // Pattern for user input detection
     private static final Pattern USER_INPUT_PATTERN = Pattern.compile(
-        "(?i)(message|title|body|content|userInput|Request\\.|Model\\.|\\[FromBody\\]|\\[FromQuery\\])"
+        "(?i)(message|title|body|content|userInput|Request\\\\.|Model\\\\.|\\\\[FromBody\\\\]|\\\\[FromQuery\\\\])"
     );
     
     // Pattern for safe encoding
     private static final Pattern SAFE_ENCODING_PATTERN = Pattern.compile(
-        "(?i)HtmlEncoder\\.Encode|" +
-        "HttpUtility\\.HtmlEncode|" +
-        "@Html\\.Encode|" +
-        "WebUtility\\.HtmlEncode"
+        "(?i)HtmlEncoder\\\\.Encode|" +
+        "HttpUtility\\\\.HtmlEncode|" +
+        "@Html\\\\.Encode|" +
+        "WebUtility\\\\.HtmlEncode"
     );
     
     public XssPreventionRule() {
