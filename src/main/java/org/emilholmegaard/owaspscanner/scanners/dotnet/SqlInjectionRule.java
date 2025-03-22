@@ -18,16 +18,16 @@ public class SqlInjectionRule extends AbstractDotNetSecurityRule {
     private static final String REFERENCE = 
             "https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html#sql-injection";
     
-    // Comprehensive SQL injection detection pattern
+    // Optimized SQL injection detection pattern with bounded quantifiers to prevent excessive backtracking
     private static final Pattern SQL_INJECTION_PATTERN = Pattern.compile(
         "(?i)(" +
-        "\\+\\s*[\\w.]+\\s*\\+|" +  // String concatenation
-        "FromSqlRaw\\(.*\\+|" +  // Entity Framework raw SQL with concatenation
-        "ExecuteSqlRaw(Async)?\\(.*\\+|" +  // ExecuteSqlRaw methods
-        "SqlCommand\\(.*\\+|" +  // SqlCommand with concatenation
-        "LIKE\\s*'%\\s*\\+\\s*\\w+\\s*\\+\\s*%'|" +  // LIKE query with concatenation
-        "WHERE.*=\\s*'.*\\+|" +  // Generic WHERE clause with concatenation
-        "string\\s+query\\s*=.*LIKE.*\\+)" // Query string with LIKE and concatenation
+        "\\+\\s*[\\w.]{1,30}\\s*\\+|" +  // Bounded string concatenation
+        "FromSqlRaw\\([^)]{0,200}\\+|" +  // Bounded Entity Framework raw SQL
+        "ExecuteSqlRaw(?:Async)?\\([^)]{0,200}\\+|" +  // Bounded ExecuteSqlRaw methods
+        "SqlCommand\\([^)]{0,200}\\+|" +  // Bounded SqlCommand
+        "LIKE\\s*'%\\s*\\+\\s*\\w{1,30}\\s*\\+\\s*%'|" +  // Bounded LIKE query
+        "WHERE[^=]{0,50}=\\s*'[^']{0,50}\\+|" +  // Bounded WHERE clause
+        "string\\s+query\\s*=[^;]{0,200}LIKE[^;]{0,50}\\+)" // Bounded query string
     );
     
     // Pattern to identify user input variables
