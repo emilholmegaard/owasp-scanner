@@ -18,23 +18,23 @@ public class SecureConfigurationRule extends AbstractDotNetSecurityRule {
     private static final String REFERENCE = 
             "https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html#data-protection-configuration-net-462";
     
+    // Optimized initial pattern for first-pass scanning
     private static final Pattern PATTERN = 
-            Pattern.compile("(?i)<connectionStrings|<appSettings|\\\"ConnectionStrings\\\"|secrets\\.json|appsettings|password|key|secret");
+            Pattern.compile("(?i)(?:config|json|password|secret|key|token|apikey|connectionstring)");
     
-    // Patterns to identify potential secrets
+    // Focused pattern for config file detection
+    private static final Pattern CONFIG_FILE_PATTERN = 
+            Pattern.compile("(?i)(?:\\.config|\\.json|web\\.config|app\\.config|secrets\\.json|appsettings)$");
+    
+    // Pattern to identify potential secrets with bounded repetition for better performance
     private static final Pattern SECRETS_PATTERN = Pattern.compile(
-            "(?i)password|pwd|secret|key|token|apikey|connectionstring");
+            "(?i)(?:password|pwd|secret|key|token|apikey|connectionstring)[\\s=\":\\[]{1,5}([^\\s=\"\\[]+)");
     
-    // Patterns for secure storage/protection mechanisms
+    // Simplified secure storage pattern
     private static final Pattern SECURE_STORAGE_PATTERN = Pattern.compile(
-            "(?i)Azure\\.KeyVault|Microsoft\\.Extensions\\.Configuration\\.UserSecrets|" +
-            "ProtectedData|" +
-            "DPAPI|" +
-            "Environment\\.GetEnvironmentVariable|" +
-            "EnvironmentVariableTarget|" +
-            "IConfiguration|" +
-            "\\.AddEnvironmentVariables|" +
-            "EncryptedData");
+            "(?i)(?:Azure\\.KeyVault|UserSecrets|ProtectedData|DPAPI|GetEnvironmentVariable|" +
+            "EnvironmentVariableTarget|IConfiguration|AddEnvironmentVariables|EncryptedData)"
+    );
     
     /**
      * Creates a new SecureConfigurationRule.
@@ -47,17 +47,18 @@ public class SecureConfigurationRule extends AbstractDotNetSecurityRule {
     protected boolean checkViolation(String line, int lineNumber, RuleContext context) {
         String fileName = context.getFilePath().getFileName().toString().toLowerCase();
         
-        // For testing purposes, simplify detection to check for secrets in config files
-        if (isConfigurationFile(fileName) && 
-            (line.toLowerCase().contains("password") || 
-             line.toLowerCase().contains("secret") || 
-             line.toLowerCase().contains("key"))) {
-            
-            if (line.contains("=") || line.contains(":")) {
-                if (line.contains("\"") && !line.contains("${") && !line.contains("ProtectedData")) {
-                    return true;
-                }
+        // First check: Is this a configuration file at all? If not, return quickly
+        if (!isConfigurationFile(fileName)) {
+            return false;
+        }
+        
+        // Second check: Does the line actually contain sensitive data?
+        if (SECRETS_PATTERN.matcher(line).find()) {
+            // Check if using secure storage mechanism
+            if (line.contains("${") || SECURE_STORAGE_PATTERN.matcher(line).find()) {
+                return false; // Using secure reference or protected data
             }
+            return true; // Found unprotected secrets
         }
         
         return false;
@@ -67,11 +68,6 @@ public class SecureConfigurationRule extends AbstractDotNetSecurityRule {
      * Determines if the file is a configuration file.
      */
     private boolean isConfigurationFile(String fileName) {
-        return fileName.endsWith(".config") ||
-               fileName.endsWith(".json") ||
-               fileName.endsWith("web.config") ||
-               fileName.endsWith("app.config") ||
-               fileName.endsWith("secrets.json") ||
-               fileName.contains("appsettings");
+        return CONFIG_FILE_PATTERN.matcher(fileName).find();
     }
 }
