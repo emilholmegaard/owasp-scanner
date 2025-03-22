@@ -21,7 +21,8 @@ permissions:
 
 jobs:
   maintainability-check:
-    if: ${{ false }}
+    # Only run if triggered manually or if PR is labeled with 'maintainability'
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'maintainability') }}
     name: CodeQL Maintainability Analysis
     runs-on: ubuntu-latest
     
