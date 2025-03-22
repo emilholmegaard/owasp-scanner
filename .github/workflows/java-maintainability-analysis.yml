@@ -1,12 +1,16 @@
 name: Java Maintainability Analysis
 
 on:
-  # Run performance tests on PRs targeting main branch
+  # Analyze default branch
+  push:
+    branches: [ main ]
+  
+  # Run on PRs targeting main branch
   pull_request:
     branches: [ main ]
     types: [ labeled ]
   
-  # Allow manually triggering the workflow
+  # Allow manual triggers
   workflow_dispatch:
     inputs:
       label:
@@ -22,7 +26,7 @@ permissions:
 jobs:
   maintainability-check:
     # Only run if triggered manually or if PR is labeled with 'maintainability'
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'maintainability') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'maintainability') }}
     name: CodeQL Maintainability Analysis
     runs-on: ubuntu-latest
     
@@ -53,12 +57,11 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
-          category: "maintainability-analysis"
-          output: sarif-results
+          category: "java-maintainability"
 
       # Save analysis results
       - name: Upload SARIF results
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: sarif-results/java.sarif
-          category: "maintainability-upload"
+          sarif_file: ${{ runner.temp }}/codeql-results/java.sarif
+          category: "java-maintainability"
