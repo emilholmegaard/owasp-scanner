@@ -19,9 +19,12 @@ import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Collectors;
 
@@ -30,6 +33,17 @@ import java.util.stream.Collectors;
  */
 public class BaseScannerEngine implements ScannerEngine {
     private final List<SecurityScanner> scanners = new ArrayList<>();
+    
+    /**
+     * Cache for storing file content to avoid redundant file reads.
+     * The key is the file path, and the value is a CachedFileContent object.
+     */
+    private static final Map<Path, CachedFileContent> fileContentCache = new ConcurrentHashMap<>();
+    
+    /**
+     * Maximum length of a line to be processed without truncation
+     */
+    private static final int MAX_LINE_LENGTH = 5000;
     
     @Override
     public void registerScanner(SecurityScanner scanner) {
@@ -125,33 +139,121 @@ public class BaseScannerEngine implements ScannerEngine {
     }
 
     /**
-     * Helper method to read file content with fallback encodings.
+     * Class for storing cached file content with metadata
+     */
+    private static class CachedFileContent {
+        private final List<String> lines;
+        private final Instant timestamp;
+        
+        public CachedFileContent(List<String> lines) {
+            this.lines = lines;
+            this.timestamp = Instant.now();
+        }
+        
+        public List<String> getLines() {
+            return lines;
+        }
+        
+        public Instant getTimestamp() {
+            return timestamp;
+        }
+    }
+
+    /**
+     * Helper method to read file content with optimized encoding detection and caching.
+     * 
      * @param filePath the path to the file to read
      * @return a list of lines from the file, or an empty list if all read attempts fail
      */
     public static List<String> readFileWithFallback(Path filePath) {
-        // Try common encodings in sequence
-        List<String> encodings = Arrays.asList(
-            "UTF-8", 
-            "windows-1252", 
-            "ISO-8859-1",
-            "UTF-16LE",
-            "UTF-16BE"
-        );
-        
-        for (String encoding : encodings) {
-            try {
-                return Files.readAllLines(filePath, Charset.forName(encoding));
-            } catch (MalformedInputException e) {
-                // If we get encoding errors, try the next encoding
-                continue;
-            } catch (IOException e) {
-                // For other types of IO errors, try binary fallback
-                break;
+        try {
+            // Check if file was modified since it was cached
+            if (fileContentCache.containsKey(filePath)) {
+                Instant fileLastModified = Files.getLastModifiedTime(filePath).toInstant();
+                CachedFileContent cachedContent = fileContentCache.get(filePath);
+                
+                // If file hasn't been modified since it was cached, return cached content
+                if (!fileLastModified.isAfter(cachedContent.getTimestamp())) {
+                    return cachedContent.getLines();
+                }
+            }
+        } catch (IOException e) {
+            // If we can't check file modification time, proceed with regular reading
+            // but still check cache first
+            if (fileContentCache.containsKey(filePath)) {
+                return fileContentCache.get(filePath).getLines();
             }
         }
         
-        // Binary fallback - read as bytes and replace invalid chars
+        // File wasn't in cache or was modified, so read it
+        List<String> lines = readFileWithOptimizedEncoding(filePath);
+        
+        // Cache the content
+        fileContentCache.put(filePath, new CachedFileContent(lines));
+        
+        return lines;
+    }
+    
+    /**
+     * Reads file content with optimized encoding detection.
+     * 
+     * @param filePath the path to the file to read
+     * @return a list of lines from the file
+     */
+    private static List<String> readFileWithOptimizedEncoding(Path filePath) {
+        // Try UTF-8 first as it's the most common encoding
+        try {
+            return readLinesWithLengthLimit(Files.readAllLines(filePath, StandardCharsets.UTF_8));
+        } catch (MalformedInputException e) {
+            // If UTF-8 fails, try other common encodings
+            List<Charset> fallbackCharsets = Arrays.asList(
+                Charset.forName("windows-1252"),
+                StandardCharsets.ISO_8859_1,
+                StandardCharsets.UTF_16LE,
+                StandardCharsets.UTF_16BE
+            );
+            
+            for (Charset charset : fallbackCharsets) {
+                try {
+                    return readLinesWithLengthLimit(Files.readAllLines(filePath, charset));
+                } catch (MalformedInputException ex) {
+                    // Try next encoding
+                    continue;
+                } catch (IOException ex) {
+                    // For other IO issues, try binary fallback
+                    break;
+                }
+            }
+            
+            // If all encodings fail, use binary fallback with replacements
+            return readWithBinaryFallback(filePath);
+        } catch (IOException e) {
+            // For other IO errors, try binary fallback
+            return readWithBinaryFallback(filePath);
+        }
+    }
+    
+    /**
+     * Applies length limiting to each line to prevent excessive memory use
+     * 
+     * @param lines the list of lines to process
+     * @return a list of lines with length limiting applied
+     */
+    private static List<String> readLinesWithLengthLimit(List<String> lines) {
+        return lines.stream()
+            .map(line -> line.length() > MAX_LINE_LENGTH 
+                ? line.substring(0, MAX_LINE_LENGTH) + "... [truncated]" 
+                : line)
+            .collect(Collectors.toList());
+    }
+    
+    /**
+     * Reads file using binary fallback with replacement for invalid characters
+     * 
+     * @param filePath the path to the file to read
+     * @return a list of lines from the file, or an empty list if read fails
+     */
+    private static List<String> readWithBinaryFallback(Path filePath) {
         try {
             byte[] bytes = Files.readAllBytes(filePath);
             CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
@@ -163,12 +265,32 @@ public class BaseScannerEngine implements ScannerEngine {
             String content = charBuffer.toString();
             
             // Split by common line separators (handle both Windows and Unix line endings)
-            return Arrays.asList(content.split("\\r?\\n"));
+            String[] splitLines = content.split("\\r?\\n");
+            
+            // Apply length limiting
+            List<String> lines = new ArrayList<>(splitLines.length);
+            for (String line : splitLines) {
+                if (line.length() > MAX_LINE_LENGTH) {
+                    lines.add(line.substring(0, MAX_LINE_LENGTH) + "... [truncated]");
+                } else {
+                    lines.add(line);
+                }
+            }
+            
+            return lines;
         } catch (IOException e) {
             // If all methods fail, return an empty list
             System.err.println("Failed to read file with any encoding: " + filePath);
             return new ArrayList<>();
         }
+    }
+    
+    /**
+     * Clears the file content cache.
+     * This can be called to free memory when needed.
+     */
+    public static void clearFileContentCache() {
+        fileContentCache.clear();
     }
 
     /**
