@@ -29,6 +29,12 @@ public class CsrfProtectionRule extends AbstractDotNetSecurityRule {
             "app\\.UseAntiforgeryTokens|" +
             "\\.RequireAntiForgeryToken");
     
+    // CSRF protection patterns
+    private static final Pattern CSRF_PROTECTION_PATTERN = Pattern.compile(
+            "(?i)\\[ValidateAntiForgeryToken\\]|" +
+            "@Html\\.AntiForgeryToken\\(\\)|" +
+            "<input name=\\\"__RequestVerificationToken\\\"");
+    
     /**
      * Creates a new CsrfProtectionRule.
      */
@@ -45,13 +51,11 @@ public class CsrfProtectionRule extends AbstractDotNetSecurityRule {
                 return false;
             }
             
-            // Look for the ValidateAntiForgeryToken attribute within 5 lines
-            List<String> surroundingLines = context.getLinesAround(lineNumber, 5);
+            // Look for the ValidateAntiForgeryToken attribute within 5 lines using cached context
+            String surroundingCode = context.getJoinedLinesAround(lineNumber, 5, "\n");
             
-            boolean hasAntiForgeryToken = surroundingLines.stream()
-                .anyMatch(l -> l.contains("[ValidateAntiForgeryToken]") ||
-                               l.contains("@Html.AntiForgeryToken()") ||
-                               l.contains("<input name=\"__RequestVerificationToken\""));
+            // Check for CSRF protection tokens in the surrounding code
+            boolean hasAntiForgeryToken = CSRF_PROTECTION_PATTERN.matcher(surroundingCode).find();
             
             // For test purposes, we'll simplify the detection to just check for the token
             // in controllers marked with HTTP verb attributes
