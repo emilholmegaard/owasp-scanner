@@ -106,7 +106,6 @@ public class XssPreventionRuleTest extends AbstractRuleTest {
         when(context.getFilePath()).thenReturn(Paths.get("JavaScriptFile.js"));
         
         // Get the line indices to simulate the correct context
-        int scriptBlockStart = 1; // The index of the "<script>" line
         when(context.getFileContent()).thenReturn(fileContent);
         
         // Setup the context with the right surrounding lines
