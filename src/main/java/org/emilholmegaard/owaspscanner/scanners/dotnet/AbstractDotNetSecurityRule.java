@@ -67,6 +67,15 @@ public abstract class AbstractDotNetSecurityRule implements SecurityRule {
         return reference;
     }
     
+    /**
+     * Gets the regex pattern used for quick checks of rule violations.
+     * 
+     * @return The Pattern object used for quick violation detection
+     */
+    public Pattern getPattern() {
+        return pattern;
+    }
+    
     @Override
     public boolean isViolatedBy(String line, int lineNumber, RuleContext context) {
         // First quick check using regex for improved performance
