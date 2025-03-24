@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -300,6 +301,12 @@ public class BaseScannerEngine implements ScannerEngine {
         private final Path filePath;
         private final List<String> fileContent;
         
+        // Cache for lines around context to avoid redundant list creation
+        private final Map<String, List<String>> lineContextCache = new HashMap<>();
+        
+        // Cache for joined context strings to avoid redundant string joining
+        private final Map<String, String> joinedContextCache = new HashMap<>();
+        
         public DefaultRuleContext(Path filePath) {
             this.filePath = filePath;
             this.fileContent = readFileWithFallback(filePath);
@@ -322,10 +329,43 @@ public class BaseScannerEngine implements ScannerEngine {
         
         @Override
         public List<String> getLinesAround(int lineNumber, int windowSize) {
+            // Create a cache key based on line number and window size
+            String cacheKey = lineNumber + ":" + windowSize;
+            
+            // Check cache first
+            if (lineContextCache.containsKey(cacheKey)) {
+                return lineContextCache.get(cacheKey);
+            }
+            
+            // Calculate line range
             int start = Math.max(0, lineNumber - windowSize - 1);
             int end = Math.min(fileContent.size(), lineNumber + windowSize);
             
-            return fileContent.subList(start, end);
+            // Create and cache the context lines
+            List<String> contextLines = fileContent.subList(start, end);
+            lineContextCache.put(cacheKey, contextLines);
+            
+            return contextLines;
+        }
+        
+        @Override
+        public String getJoinedLinesAround(int lineNumber, int windowSize, String delimiter) {
+            // Create a cache key based on line number, window size, and delimiter
+            String cacheKey = lineNumber + ":" + windowSize + ":" + delimiter;
+            
+            // Check cache first
+            if (joinedContextCache.containsKey(cacheKey)) {
+                return joinedContextCache.get(cacheKey);
+            }
+            
+            // Get context lines
+            List<String> contextLines = getLinesAround(lineNumber, windowSize);
+            
+            // Join and cache the result
+            String joinedContext = String.join(delimiter, contextLines);
+            joinedContextCache.put(cacheKey, joinedContext);
+            
+            return joinedContext;
         }
     }
 }
