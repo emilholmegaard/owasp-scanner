@@ -44,6 +44,17 @@ public class InputValidationRule extends AbstractDotNetSecurityRule {
     private static final Pattern CUSTOM_VALIDATION_PATTERN =
             Pattern.compile("(?i)Sanitize|Validate|IsValid|CheckInput|Whitelist|Filter");
     
+    // Combined pattern for any validation
+    private static final Pattern ANY_VALIDATION_PATTERN = Pattern.compile(
+            "(?i)\\[Required\\]|\\[StringLength\\]|\\[Range\\]|\\[RegularExpression\\]|" +
+            "\\[MinLength\\]|\\[MaxLength\\]|\\[EmailAddress\\]|\\[Url\\]|\\[Phone\\]|" +
+            "\\[CreditCard\\]|\\[Compare\\]|\\[DataType\\]|" +
+            "ModelState\\.IsValid|TryValidateModel|ValidateAntiForgeryToken|" +
+            "\\.Validate\\(|Validator\\.|ValidationResult|IValidator|" +
+            "AbstractValidator|RuleFor\\(|ValidatorFactory|" +
+            "Regex\\.IsMatch|new Regex|Match\\.|Matches\\.|System\\.Text\\.RegularExpressions|" +
+            "Sanitize|Validate|IsValid|CheckInput|Whitelist|Filter");
+    
     /**
      * Creates a new InputValidationRule.
      */
@@ -63,25 +74,28 @@ public class InputValidationRule extends AbstractDotNetSecurityRule {
             return false;
         }
         
+        // Use efficient cached file content check for global validation patterns
+        String fullFileContent = String.join("\n", context.getFileContent());
+        
         // Check if the class/file already has validation attributes on properties
-        boolean hasDataAnnotations = hasDataAnnotationsInFile(context.getFileContent());
+        boolean hasDataAnnotations = DATA_ANNOTATIONS_PATTERN.matcher(fullFileContent).find();
         
         // Check if ModelState.IsValid is used appropriately in action methods
-        boolean hasModelValidation = hasModelValidationInFile(context.getFileContent());
+        boolean hasModelValidation = MODEL_VALIDATION_PATTERN.matcher(fullFileContent).find();
         
         // Check for FluentValidation usage
-        boolean hasFluentValidation = hasFluentValidationInFile(context.getFileContent());
+        boolean hasFluentValidation = FLUENT_VALIDATION_PATTERN.matcher(fullFileContent).find();
         
         // If any proper validation approach is detected at the file level, reduce false positives
-        if (hasGlobalValidation(context.getFileContent()) && (hasDataAnnotations || hasModelValidation || hasFluentValidation)) {
+        if (hasGlobalValidation(fullFileContent) && (hasDataAnnotations || hasModelValidation || hasFluentValidation)) {
             return false;
         }
         
-        // Look for validation in surrounding lines (for contexts where validation isn't at the class level)
-        List<String> surroundingLines = context.getLinesAround(lineNumber, 10);
-        String surroundingCode = String.join("\n", surroundingLines);
+        // Look for validation in surrounding lines using cached context
+        String surroundingCode = context.getJoinedLinesAround(lineNumber, 10, "\n");
         
-        boolean hasSurroundingValidation = hasValidationInCode(surroundingCode);
+        // Use combined pattern match for better performance
+        boolean hasSurroundingValidation = ANY_VALIDATION_PATTERN.matcher(surroundingCode).find();
         
         // Return true only if we have user input with no validation
         return !hasSurroundingValidation;
@@ -95,53 +109,22 @@ public class InputValidationRule extends AbstractDotNetSecurityRule {
     }
     
     /**
-     * Checks if the file uses Data Annotations for validation.
-     */
-    private boolean hasDataAnnotationsInFile(List<String> fileContent) {
-        return fileContent.stream().anyMatch(line -> DATA_ANNOTATIONS_PATTERN.matcher(line).find());
-    }
-    
-    /**
-     * Checks if the file uses ModelState validation.
-     */
-    private boolean hasModelValidationInFile(List<String> fileContent) {
-        return fileContent.stream().anyMatch(line -> MODEL_VALIDATION_PATTERN.matcher(line).find());
-    }
-    
-    /**
-     * Checks if the file uses FluentValidation.
-     */
-    private boolean hasFluentValidationInFile(List<String> fileContent) {
-        return fileContent.stream().anyMatch(line -> FLUENT_VALIDATION_PATTERN.matcher(line).find());
-    }
-    
-    /**
-     * Checks if validation is present in a code snippet.
-     */
-    private boolean hasValidationInCode(String code) {
-        return DATA_ANNOTATIONS_PATTERN.matcher(code).find() ||
-               MODEL_VALIDATION_PATTERN.matcher(code).find() ||
-               FLUENT_VALIDATION_PATTERN.matcher(code).find() ||
-               REGEX_VALIDATION_PATTERN.matcher(code).find() ||
-               CUSTOM_VALIDATION_PATTERN.matcher(code).find();
-    }
-    
-    /**
      * Checks if the application has global validation filters or attributes.
+     * 
+     * @param fullFileContent The full file content as a joined string
+     * @return True if global validation is configured
      */
-    private boolean hasGlobalValidation(List<String> fileContent) {
-        String fullContent = String.join("\n", fileContent);
-        
+    private boolean hasGlobalValidation(String fullFileContent) {
         // Look for global validation setup in ASP.NET Core
-        boolean hasValidationFilter = fullContent.contains("services.AddControllers(") &&
-                                    fullContent.contains("ValidateModelStateAttribute") ||
-                                    fullContent.contains("options.Filters.Add") &&
-                                    fullContent.contains("ValidateModel");
+        boolean hasValidationFilter = fullFileContent.contains("services.AddControllers(") &&
+                                    fullFileContent.contains("ValidateModelStateAttribute") ||
+                                    fullFileContent.contains("options.Filters.Add") &&
+                                    fullFileContent.contains("ValidateModel");
                                     
         // Look for API input validation middleware
-        boolean hasValidationMiddleware = fullContent.contains("app.UseMiddleware<") &&
-                                        (fullContent.contains("ValidationMiddleware") ||
-                                         fullContent.contains("RequestValidator"));
+        boolean hasValidationMiddleware = fullFileContent.contains("app.UseMiddleware<") &&
+                                        (fullFileContent.contains("ValidationMiddleware") ||
+                                         fullFileContent.contains("RequestValidator"));
                                          
         return hasValidationFilter || hasValidationMiddleware;
     }
