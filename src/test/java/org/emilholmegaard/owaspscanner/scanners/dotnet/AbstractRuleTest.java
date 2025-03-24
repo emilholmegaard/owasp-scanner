@@ -11,6 +11,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
@@ -47,12 +48,23 @@ public abstract class AbstractRuleTest {
         when(context.getFilePath()).thenReturn(filePath);
         
         // Set up context.getLinesAround()
-        when(context.getLinesAround(eq(lineToTest), anyInt())).thenReturn(
-            fileContent.subList(
-                Math.max(0, lineToTest - 3),
-                Math.min(fileContent.size(), lineToTest + 3)
-            )
+        List<String> contextLines = fileContent.subList(
+            Math.max(0, lineToTest - 3),
+            Math.min(fileContent.size(), lineToTest + 3)
         );
+        when(context.getLinesAround(eq(lineToTest), anyInt())).thenReturn(contextLines);
+        
+        // Set up context.getJoinedLinesAround() with the new method
+        when(context.getJoinedLinesAround(eq(lineToTest), anyInt(), anyString())).thenAnswer(invocation -> {
+            int windowSize = invocation.getArgument(1);
+            String delimiter = invocation.getArgument(2);
+            
+            int start = Math.max(0, lineToTest - windowSize - 1);
+            int end = Math.min(fileContent.size(), lineToTest + windowSize);
+            List<String> lines = fileContent.subList(start, end);
+            
+            return String.join(delimiter, lines);
+        });
         
         return lineContent;
     }
