@@ -1,0 +1,40 @@
+name: Generate Changelog
+
+on:
+  workflow_dispatch:
+  release:
+    types: [created]
+
+jobs:
+  generate-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        uses: metcalfc/changelog-generator@v4.1.0
+        with:
+          myToken: ${{ secrets.GITHUB_TOKEN }}
+          branch: main
+
+      - name: Create/Update CHANGELOG.md
+        uses: requarks/changelog-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+          writeToFile: true
+          includeInvalidCommits: false
+          includeRefIssues: true
+
+      - name: Update release with changelog
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          body: |
+            ## Changelog
+            ${{ steps.changelog.outputs.changelog }}
+          token: ${{ secrets.GITHUB_TOKEN }}
