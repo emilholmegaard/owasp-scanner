@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial changelog file
 
+### Performance
+- Optimized context analysis in security rules with caching
+- Added `getJoinedLinesAround` method to RuleContext interface
+- Improved pattern matching in security rules using combined patterns
+
 ## How this changelog is generated
 
 This changelog is automatically generated as part of the release process using GitHub Actions. The action analyzes commit messages between releases to create structured entries.
