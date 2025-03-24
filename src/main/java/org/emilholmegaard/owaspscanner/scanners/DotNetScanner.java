@@ -5,6 +5,7 @@ import org.emilholmegaard.owaspscanner.core.RuleContext;
 import org.emilholmegaard.owaspscanner.core.SecurityRule;
 import org.emilholmegaard.owaspscanner.core.SecurityScanner;
 import org.emilholmegaard.owaspscanner.core.SecurityViolation;
+import org.emilholmegaard.owaspscanner.scanners.dotnet.AbstractDotNetSecurityRule;
 import org.emilholmegaard.owaspscanner.scanners.dotnet.DotNetRuleFactory;
 
 import java.nio.file.Path;
@@ -52,6 +53,34 @@ public class DotNetScanner implements SecurityScanner {
             
             // Skip empty files or files that couldn't be read
             if (lines.isEmpty()) {
+                return violations;
+            }
+            
+            // Quick check if any line in the file might match any rule pattern
+            boolean fileNeedsDetailedCheck = false;
+            for (SecurityRule rule : rules) {
+                if (rule instanceof AbstractDotNetSecurityRule) {
+                    AbstractDotNetSecurityRule dotNetRule = (AbstractDotNetSecurityRule) rule;
+                    
+                    for (String line : lines) {
+                        if (dotNetRule.getPattern().matcher(line).find()) {
+                            fileNeedsDetailedCheck = true;
+                            break;
+                        }
+                    }
+                    
+                    if (fileNeedsDetailedCheck) {
+                        break;
+                    }
+                } else {
+                    // If any rule is not a DotNet rule, we need to do a detailed check
+                    fileNeedsDetailedCheck = true;
+                    break;
+                }
+            }
+            
+            // Skip detailed checking if no rule patterns matched
+            if (!fileNeedsDetailedCheck) {
                 return violations;
             }
             
