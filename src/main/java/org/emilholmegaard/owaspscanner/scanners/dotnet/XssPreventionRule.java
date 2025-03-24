@@ -13,8 +13,7 @@ public class XssPreventionRule extends AbstractDotNetSecurityRule {
     private static final String RULE_ID = "DOTNET-SEC-004";
     private static final String DESCRIPTION = "Potential Cross-Site Scripting (XSS) vulnerability";
     private static final String SEVERITY = "HIGH";
-    private static final String REMEDIATION = "Use built-in HtmlEncoder or AntiXssEncoder, set correct Content-Type and charset. "
-            +
+    private static final String REMEDIATION = "Use built-in HtmlEncoder or AntiXssEncoder, set correct Content-Type and charset. " +
             "Avoid using @Html.Raw for user input and prefer @Html.Encode or automatic encoding of Razor views.";
     private static final String REFERENCE = "https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html#xss-prevention";
 
@@ -22,7 +21,7 @@ public class XssPreventionRule extends AbstractDotNetSecurityRule {
     // prevent catastrophic backtracking
     private static final Pattern XSS_PATTERN = Pattern.compile(
             "(?i)" +
-                    "(Content\\(.*?[\"']text/html[\"'].*?\\+.*?\\)|" +
+                    "(Content\\(.*?[\\\"']text/html[\\\"'].*?\\+.*?\\)|" +
                     "@Html\\.Raw\\(.*?\\)|" + // Modified to catch full @Html.Raw() calls
                     "Response\\.Write\\(.*?\\)|" + // Modified to catch full Response.Write() calls
                     "document\\.write|" +
@@ -52,8 +51,8 @@ public class XssPreventionRule extends AbstractDotNetSecurityRule {
     protected boolean checkViolation(String line, int lineNumber, RuleContext context) {
         // Check if line contains XSS-related pattern
         if (XSS_PATTERN.matcher(line).find()) {
-            // Get surrounding context
-            String surroundingCode = String.join("\n", context.getLinesAround(lineNumber, 5));
+            // Get surrounding context using cached joined lines for better performance
+            String surroundingCode = context.getJoinedLinesAround(lineNumber, 5, "\n");
 
             // Check for user input
             boolean hasUserInput = USER_INPUT_PATTERN.matcher(line).find() ||
