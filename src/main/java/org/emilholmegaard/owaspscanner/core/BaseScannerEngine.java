@@ -67,6 +67,7 @@ public class BaseScannerEngine implements ScannerEngine {
     @Override
     public List<SecurityViolation> scanDirectory(Path directoryPath) {
         try {
+            // Create a Stream of files to scan
             Stream<Path> fileStream = Files.walk(directoryPath)
                 .filter(Files::isRegularFile)
                 .filter(this::isFileSizeAcceptable);
@@ -74,19 +75,23 @@ public class BaseScannerEngine implements ScannerEngine {
             if (config.isParallelProcessing()) {
                 ForkJoinPool customThreadPool = new ForkJoinPool(config.getMaxThreads());
                 try {
+                    // Create a final copy for use in the lambda
+                    final Stream<Path> finalFileStream = fileStream;
+                    
                     return customThreadPool.submit(() -> 
-                        fileStream.parallel()
+                        finalFileStream.parallel()
                             .flatMap(this::scanFileToStream)
                             .collect(Collectors.toList())
                     ).get();
                 } catch (InterruptedException | ExecutionException e) {
                     System.err.println("Error in parallel processing: " + e.getMessage());
                     // Fallback to sequential processing
-                    fileStream = Files.walk(directoryPath)
+                    // Create a new stream since the previous one may have been consumed
+                    Stream<Path> sequentialFileStream = Files.walk(directoryPath)
                         .filter(Files::isRegularFile)
                         .filter(this::isFileSizeAcceptable);
                     
-                    return fileStream
+                    return sequentialFileStream
                         .flatMap(this::scanFileToStream)
                         .collect(Collectors.toList());
                 }
