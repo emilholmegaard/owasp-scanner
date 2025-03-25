@@ -15,6 +15,8 @@ import java.util.List;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Scanner implementation for .NET applications based on OWASP .NET Security Cheat Sheet.
@@ -25,12 +27,22 @@ public class DotNetScanner implements SecurityScanner {
     private final BaseScannerEngine scannerEngine;
     
     /**
-     * Constructs a new DotNetScanner that initializes rules using the factory pattern.
+     * Constructs a new DotNetScanner that initializes rules using the factory pattern
+     * and uses a new BaseScannerEngine instance.
      */
     public DotNetScanner() {
-        // Use factory to get the rule implementations
+        this(new BaseScannerEngine());
+    }
+    
+    /**
+     * Constructs a new DotNetScanner that initializes rules using the factory pattern
+     * and uses the provided BaseScannerEngine instance.
+     * 
+     * @param scannerEngine The BaseScannerEngine instance to use
+     */
+    public DotNetScanner(BaseScannerEngine scannerEngine) {
         this.rules = DotNetRuleFactory.getInstance().createAllRules();
-        this.scannerEngine = new BaseScannerEngine();
+        this.scannerEngine = scannerEngine;
     }
     
     @Override
@@ -53,8 +65,8 @@ public class DotNetScanner implements SecurityScanner {
         List<SecurityViolation> violations = new ArrayList<>();
         
         try {
-            // Use the static version of readFileWithFallback
-            List<String> lines = BaseScannerEngine.readFileWithFallback(filePath);
+            // Use the instance of BaseScannerEngine to read file content
+            List<String> lines = scannerEngine.readFileWithFallback(filePath);
             
             // Skip empty files or files that couldn't be read
             if (lines.isEmpty()) {
@@ -89,7 +101,7 @@ public class DotNetScanner implements SecurityScanner {
                 return violations;
             }
             
-            // Create a rule context for this file using a custom implementation
+            // Create a rule context for this file
             RuleContext context = new SimpleRuleContext(filePath, lines);
             
             // Process each line with each rule
@@ -134,6 +146,12 @@ public class DotNetScanner implements SecurityScanner {
         private final Path filePath;
         private final List<String> fileContent;
         
+        // Cache for lines around context to avoid redundant list creation
+        private final Map<String, List<String>> lineContextCache = new HashMap<>();
+        
+        // Cache for joined context strings to avoid redundant string joining
+        private final Map<String, String> joinedContextCache = new HashMap<>();
+        
         public SimpleRuleContext(Path filePath, List<String> content) {
             this.filePath = filePath;
             this.fileContent = content;
@@ -151,16 +169,43 @@ public class DotNetScanner implements SecurityScanner {
         
         @Override
         public List<String> getLinesAround(int lineNumber, int windowSize) {
+            // Create a cache key based on line number and window size
+            String cacheKey = lineNumber + ":" + windowSize;
+            
+            // Check cache first
+            if (lineContextCache.containsKey(cacheKey)) {
+                return lineContextCache.get(cacheKey);
+            }
+            
+            // Calculate line range
             int start = Math.max(0, lineNumber - windowSize - 1);
             int end = Math.min(fileContent.size(), lineNumber + windowSize);
             
-            return fileContent.subList(start, end);
+            // Create and cache the context lines
+            List<String> contextLines = fileContent.subList(start, end);
+            lineContextCache.put(cacheKey, contextLines);
+            
+            return contextLines;
         }
         
         @Override
         public String getJoinedLinesAround(int lineNumber, int windowSize, String delimiter) {
+            // Create a cache key based on line number, window size, and delimiter
+            String cacheKey = lineNumber + ":" + windowSize + ":" + delimiter;
+            
+            // Check cache first
+            if (joinedContextCache.containsKey(cacheKey)) {
+                return joinedContextCache.get(cacheKey);
+            }
+            
+            // Get context lines
             List<String> contextLines = getLinesAround(lineNumber, windowSize);
-            return String.join(delimiter, contextLines);
+            
+            // Join and cache the result
+            String joinedContext = String.join(delimiter, contextLines);
+            joinedContextCache.put(cacheKey, joinedContext);
+            
+            return joinedContext;
         }
     }
 }
