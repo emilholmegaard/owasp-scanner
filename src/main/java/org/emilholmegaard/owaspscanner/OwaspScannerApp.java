@@ -122,7 +122,8 @@ public class OwaspScannerApp {
         engine.setConfig(config);
         
         // Register available scanners
-        engine.registerScanner(new DotNetScanner());
+        DotNetScanner dotNetScanner = new DotNetScanner();
+        engine.registerScanner(dotNetScanner);
         
         // Normalize path for cross-platform compatibility
         Path normalizedPath = Paths.get(directoryPath).normalize();
