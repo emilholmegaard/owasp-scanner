@@ -49,11 +49,6 @@ public class BaseScannerEngine implements ScannerEngine {
      */
     private static final Map<Path, CachedFileContent> fileContentCache = new ConcurrentHashMap<>();
     
-    /**
-     * Default maximum length of a line to be processed without truncation
-     */
-    private static final int DEFAULT_MAX_LINE_LENGTH = 5000;
-    
     @Override
     public void registerScanner(SecurityScanner scanner) {
         scanners.add(scanner);
@@ -264,18 +259,6 @@ public class BaseScannerEngine implements ScannerEngine {
     }
     
     /**
-     * Static helper method to read file content with optimized encoding detection.
-     * This is provided for compatibility with code that can't access the instance method.
-     * 
-     * @param filePath the path to the file to read
-     * @return a list of lines from the file
-     */
-    public static List<String> readFileWithFallback(Path filePath) {
-        // Use default configuration
-        return readFileWithOptimizedEncoding(filePath, DEFAULT_MAX_LINE_LENGTH);
-    }
-    
-    /**
      * Reads file content with optimized encoding detection.
      * 
      * @param filePath the path to the file to read
@@ -381,6 +364,8 @@ public class BaseScannerEngine implements ScannerEngine {
 
     /**
      * Default implementation of RuleContext.
+     * This is a non-static inner class that requires a BaseScannerEngine instance.
+     * Scanners can either use this or implement their own RuleContext.
      */
     public class DefaultRuleContext implements RuleContext {
         private final Path filePath;
