@@ -37,4 +37,18 @@ public interface ScannerEngine {
      * @param outputPath The path to write the JSON file to
      */
     void exportToJson(List<SecurityViolation> violations, Path outputPath);
+    
+    /**
+     * Sets the configuration for this scanner engine.
+     *
+     * @param config The configuration to use
+     */
+    void setConfig(ScannerConfig config);
+    
+    /**
+     * Gets the current configuration for this scanner engine.
+     *
+     * @return The current scanner configuration
+     */
+    ScannerConfig getConfig();
 }
