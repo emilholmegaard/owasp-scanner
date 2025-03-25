@@ -32,9 +32,13 @@ class FileReadingTest {
     private Path utf8File;
     private Path windows1252File;
     private Path longLineFile;
+    private BaseScannerEngine engine;
     
     @BeforeEach
     void setUp() throws IOException {
+        // Create engine instance
+        engine = new BaseScannerEngine();
+        
         // Create test files with different encodings
         utf8File = tempDir.resolve("utf8_content.txt");
         windows1252File = tempDir.resolve("windows1252_content.txt");
@@ -58,7 +62,7 @@ class FileReadingTest {
     
     @Test
     void testReadingUtf8File() {
-        List<String> lines = BaseScannerEngine.readFileWithFallback(utf8File);
+        List<String> lines = engine.readFileWithFallback(utf8File);
         assertEquals(1, lines.size());
         assertTrue(lines.get(0).contains("UTF-8 text"), "Should correctly read UTF-8 content");
         assertTrue(lines.get(0).contains("日本語"), "Should correctly read UTF-8 special characters");
@@ -66,7 +70,7 @@ class FileReadingTest {
     
     @Test
     void testReadingWindows1252File() {
-        List<String> lines = BaseScannerEngine.readFileWithFallback(windows1252File);
+        List<String> lines = engine.readFileWithFallback(windows1252File);
         assertEquals(1, lines.size());
         assertTrue(lines.get(0).contains("Windows-1252 content"), "Should correctly read Windows-1252 content");
         assertTrue(lines.get(0).contains("€"), "Should correctly read Windows-1252 special characters");
@@ -74,7 +78,7 @@ class FileReadingTest {
     
     @Test
     void testLineLengthLimiting() {
-        List<String> lines = BaseScannerEngine.readFileWithFallback(longLineFile);
+        List<String> lines = engine.readFileWithFallback(longLineFile);
         assertEquals(1, lines.size());
         assertTrue(lines.get(0).endsWith("... [truncated]"), "Long line should be truncated");
         assertTrue(lines.get(0).length() < 10000, "Long line should be truncated to shorter length");
@@ -83,14 +87,14 @@ class FileReadingTest {
     @Test
     void testCaching() throws IOException {
         // First read should populate the cache
-        List<String> firstRead = BaseScannerEngine.readFileWithFallback(utf8File);
+        List<String> firstRead = engine.readFileWithFallback(utf8File);
         
         // Modify the file - this should not affect the second read if caching works
         String modifiedContent = "Modified content that shouldn't be read due to caching";
         Files.write(utf8File, modifiedContent.getBytes(StandardCharsets.UTF_8));
         
         // Second read should return the cached content
-        List<String> secondRead = BaseScannerEngine.readFileWithFallback(utf8File);
+        List<String> secondRead = engine.readFileWithFallback(utf8File);
         
         // Should return the same content from cache
         assertEquals(firstRead, secondRead, "Second read should return cached content");
@@ -101,7 +105,7 @@ class FileReadingTest {
         Files.setLastModifiedTime(utf8File, FileTime.from(Instant.now().plusSeconds(10)));
         
         // After modification time change, content should be re-read
-        List<String> thirdRead = BaseScannerEngine.readFileWithFallback(utf8File);
+        List<String> thirdRead = engine.readFileWithFallback(utf8File);
         assertTrue(thirdRead.get(0).contains("Modified content"), 
             "File should be re-read after modification time change");
     }
@@ -109,7 +113,7 @@ class FileReadingTest {
     @Test
     void testClearingCache() throws IOException {
         // First read populates cache
-        BaseScannerEngine.readFileWithFallback(utf8File);
+        engine.readFileWithFallback(utf8File);
         
         // Modify the file
         String modifiedContent = "Modified content after clearing cache";
@@ -119,7 +123,7 @@ class FileReadingTest {
         BaseScannerEngine.clearFileContentCache();
         
         // Read again - should get the modified content
-        List<String> lines = BaseScannerEngine.readFileWithFallback(utf8File);
+        List<String> lines = engine.readFileWithFallback(utf8File);
         assertTrue(lines.get(0).contains("Modified content"), 
             "File should be re-read after clearing cache");
     }
@@ -143,6 +147,12 @@ class FileReadingTest {
             })
             .collect(Collectors.toList());
         
+        // Create one engine instance per thread to simulate concurrent use
+        BaseScannerEngine[] engines = new BaseScannerEngine[threadCount];
+        for (int i = 0; i < threadCount; i++) {
+            engines[i] = new BaseScannerEngine();
+        }
+        
         // Read the files concurrently
         for (int i = 0; i < threadCount; i++) {
             int threadIndex = i;
@@ -150,7 +160,7 @@ class FileReadingTest {
                 try {
                     // Each thread reads all files
                     for (Path file : testFiles) {
-                        List<String> lines = BaseScannerEngine.readFileWithFallback(file);
+                        List<String> lines = engines[threadIndex].readFileWithFallback(file);
                         assertFalse(lines.isEmpty(), "Thread " + threadIndex + " should read file content");
                     }
                 } finally {
@@ -165,7 +175,7 @@ class FileReadingTest {
         
         // Additional verification
         for (Path file : testFiles) {
-            List<String> lines = BaseScannerEngine.readFileWithFallback(file);
+            List<String> lines = engine.readFileWithFallback(file);
             assertNotNull(lines, "File content should be cached and readable");
         }
     }
@@ -181,7 +191,7 @@ class FileReadingTest {
         Files.write(binaryFile, binaryData);
         
         // Should be able to read using binary fallback
-        List<String> lines = BaseScannerEngine.readFileWithFallback(binaryFile);
+        List<String> lines = engine.readFileWithFallback(binaryFile);
         assertNotNull(lines, "Binary fallback should not return null");
         assertFalse(lines.isEmpty(), "Binary fallback should return some content");
     }
@@ -198,12 +208,12 @@ class FileReadingTest {
         
         // First read - will use normal reading and caching
         long startFirstRead = System.nanoTime();
-        List<String> firstReadLines = BaseScannerEngine.readFileWithFallback(testFile);
+        List<String> firstReadLines = engine.readFileWithFallback(testFile);
         long firstReadTime = System.nanoTime() - startFirstRead;
         
         // Second read - should use cache
         long startSecondRead = System.nanoTime();
-        List<String> secondReadLines = BaseScannerEngine.readFileWithFallback(testFile);
+        List<String> secondReadLines = engine.readFileWithFallback(testFile);
         long secondReadTime = System.nanoTime() - startSecondRead;
         
         // Verify content is the same
@@ -224,9 +234,9 @@ class FileReadingTest {
         Files.write(testFile, "Content for repeated reads test".getBytes(StandardCharsets.UTF_8));
         
         // Read multiple times to ensure cache works consistently
-        List<String> result1 = BaseScannerEngine.readFileWithFallback(testFile);
-        List<String> result2 = BaseScannerEngine.readFileWithFallback(testFile);
-        List<String> result3 = BaseScannerEngine.readFileWithFallback(testFile);
+        List<String> result1 = engine.readFileWithFallback(testFile);
+        List<String> result2 = engine.readFileWithFallback(testFile);
+        List<String> result3 = engine.readFileWithFallback(testFile);
         
         // All results should be the same
         assertEquals(result1, result2, "Repeated reads should return same content");
@@ -234,7 +244,7 @@ class FileReadingTest {
         
         // Verify cache works by modifying file without changing timestamp
         Files.write(testFile, "Modified content without timestamp change".getBytes(StandardCharsets.UTF_8));
-        List<String> result4 = BaseScannerEngine.readFileWithFallback(testFile);
+        List<String> result4 = engine.readFileWithFallback(testFile);
         
         // Should still get cached content
         assertEquals(result1, result4, "Should return cached content without checking file");
