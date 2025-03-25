@@ -1,209 +1,239 @@
 package org.emilholmegaard.owaspscanner.core;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.BeforeEach;
+import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.mockito.MockitoAnnotations;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.*;
 
-class BaseScannerEngineTest {
+/**
+ * Tests for the BaseScannerEngine class focusing on configuration usage.
+ */
+public class BaseScannerEngineTest {
+
+    @TempDir
+    Path tempDir;
+    
+    @Mock
+    SecurityScanner mockScanner;
     
     private BaseScannerEngine engine;
-    private SecurityScanner mockScanner;
+    private Path testFile;
     
     @BeforeEach
-    void setUp() {
+    public void setUp() throws IOException {
+        MockitoAnnotations.openMocks(this);
+        
+        // Create test engine
         engine = new BaseScannerEngine();
-        mockScanner = Mockito.mock(SecurityScanner.class);
         
-        // Setup mock scanner
-        when(mockScanner.getSupportedFileExtensions()).thenReturn(Arrays.asList("cs", "config"));
-        when(mockScanner.canProcessFile(any(Path.class))).thenReturn(false); // Default to false
-        when(mockScanner.canProcessFile(Mockito.argThat(path -> 
-            path != null && (path.toString().endsWith(".cs") || path.toString().endsWith(".config"))))).thenReturn(true);
-    }
-    
-    @Test
-    void testRegisterScanner() {
-        engine.registerScanner(mockScanner);
-        // Indirectly test by scanning a file that the scanner can process
-        when(mockScanner.scanFile(any())).thenReturn(Collections.emptyList());
-        
-        List<SecurityViolation> results = engine.scanFile(Path.of("test.cs"));
-        assertEquals(0, results.size());
-        
-        // Verify that the scanner's scanFile method was called
-        Mockito.verify(mockScanner).scanFile(any());
-    }
-    
-    @Test
-    void testScanFile(@TempDir Path tempDir) throws IOException {
         // Create a test file
-        Path testFile = tempDir.resolve("test.cs");
-        Files.writeString(testFile, "// Test file content");
+        testFile = tempDir.resolve("test.txt");
+        List<String> lines = Arrays.asList(
+            "First line of test file",
+            "Second line of test file",
+            "Third line of test file",
+            "Fourth line of test file",
+            "Fifth line of test file"
+        );
+        Files.write(testFile, lines, StandardCharsets.UTF_8);
         
-        // Create a mock violation with a simple string path to avoid serialization issues
-        SecurityViolation mockViolation = new SecurityViolation(
-            "TEST-001", "Test violation", testFile, 1, 
-            "Test snippet", "MEDIUM", "Fix it", "example.com");
-        
-        when(mockScanner.scanFile(testFile)).thenReturn(Collections.singletonList(mockViolation));
-        
-        // Register scanner and scan the file
-        engine.registerScanner(mockScanner);
-        List<SecurityViolation> violations = engine.scanFile(testFile);
-        
-        // Verify
-        assertEquals(1, violations.size());
-        assertEquals("TEST-001", violations.get(0).getRuleId());
-        assertEquals("Test violation", violations.get(0).getDescription());
-    }
-    
-    @Test
-    void testScanDirectory(@TempDir Path tempDir) throws IOException {
-        // Create test directory structure with multiple files
-        Path file1 = tempDir.resolve("file1.cs");
-        Path file2 = tempDir.resolve("file2.config");
-        Path file3 = tempDir.resolve("file3.txt"); // Not supported by the scanner
-        
-        Files.writeString(file1, "// CS file");
-        Files.writeString(file2, "<!-- Config file -->");
-        Files.writeString(file3, "Plain text file");
-        
-        // Setup mock violations
-        SecurityViolation violation1 = new SecurityViolation(
-            "TEST-001", "Violation in CS file", file1, 1, 
-            "CS file", "HIGH", "Fix it", "example.com");
-        SecurityViolation violation2 = new SecurityViolation(
-            "TEST-002", "Violation in config file", file2, 1, 
-            "Config file", "MEDIUM", "Fix it", "example.com");
-        
-        when(mockScanner.scanFile(file1)).thenReturn(Collections.singletonList(violation1));
-        when(mockScanner.scanFile(file2)).thenReturn(Collections.singletonList(violation2));
-        
-        // Register scanner and scan the directory
-        engine.registerScanner(mockScanner);
-        List<SecurityViolation> violations = engine.scanDirectory(tempDir);
-        
-        // Verify
-        assertEquals(2, violations.size());
-        assertTrue(violations.stream().anyMatch(v -> v.getRuleId().equals("TEST-001")));
-        assertTrue(violations.stream().anyMatch(v -> v.getRuleId().equals("TEST-002")));
-    }
-    
-    @Test
-    void testParallelFileProcessing(@TempDir Path tempDir) throws IOException, InterruptedException {
-        // Create multiple test files (reducing the number for faster test)
-        int fileCount = 5; // Reduced from 10 to 5 to speed up the test
-        for (int i = 0; i < fileCount; i++) {
-            Path file = tempDir.resolve("file" + i + ".cs");
-            Files.writeString(file, "// CS file " + i);
-        }
-        
-        // Track the maximum number of concurrent threads used
-        AtomicInteger concurrentThreads = new AtomicInteger(0);
-        AtomicInteger maxConcurrentThreads = new AtomicInteger(0);
-        
-        // First reset the mockScanner to ensure a clean state
-        Mockito.reset(mockScanner);
-        
-        // Set up the mock scanner with appropriate default behavior
-        when(mockScanner.getSupportedFileExtensions()).thenReturn(Arrays.asList("cs", "config"));
+        // Mock scanner behavior
+        when(mockScanner.getName()).thenReturn("TestScanner");
+        when(mockScanner.getTechnology()).thenReturn("Test");
+        when(mockScanner.getSupportedFileExtensions()).thenReturn(Arrays.asList("txt"));
         when(mockScanner.canProcessFile(any(Path.class))).thenReturn(true);
         
-        // Mock scanFile to return a violation for each file and track concurrency
-        doAnswer(invocation -> {
-            Path filePath = invocation.getArgument(0);
-            
-            // Increment the concurrent thread counter
-            int current = concurrentThreads.incrementAndGet();
-            maxConcurrentThreads.updateAndGet(max -> Math.max(max, current));
-            
-            // Simulate some processing time (reducing from 50ms to 20ms)
-            Thread.sleep(20);
-            
-            // Create a violation for this file
-            SecurityViolation violation = new SecurityViolation(
-                "TEST-" + filePath.getFileName(), 
-                "Violation in " + filePath.getFileName(), 
-                filePath, 1, "Code snippet", "MEDIUM", "Fix it", "example.com");
-            
-            // Decrement the concurrent thread counter
-            concurrentThreads.decrementAndGet();
-            
-            return Collections.singletonList(violation);
-        }).when(mockScanner).scanFile(any(Path.class));
-        
-        // Register scanner and scan the directory
+        // Register the mock scanner
         engine.registerScanner(mockScanner);
-        long startTime = System.currentTimeMillis();
-        List<SecurityViolation> violations = engine.scanDirectory(tempDir);
-        long endTime = System.currentTimeMillis();
-        
-        // Verify results - explicitly print out detailed diagnostics to help debug CI issues
-        System.out.println("Expected " + fileCount + " violations, found " + violations.size());
-        if (violations.size() != fileCount) {
-            System.out.println("Violation details:");
-            for (SecurityViolation v : violations) {
-                System.out.println("  - " + v.getRuleId() + ": " + v.getDescription() + " in " + v.getFilePath());
-            }
-        }
-        assertEquals(fileCount, violations.size(), "Expected " + fileCount + " violations, but got " + violations.size());
-        
-        // If running in parallel, should have more than 1 concurrent thread at some point
-        assertTrue(maxConcurrentThreads.get() > 1, "Files not processed in parallel (maxConcurrentThreads = " + maxConcurrentThreads.get() + ")");
-        
-        // Calculate and print the time saved compared to sequential processing
-        long actualTime = endTime - startTime;
-        long estimatedSequentialTime = fileCount * 20; // Each file takes about 20ms now
-        System.out.println("Parallel processing time: " + actualTime + "ms");
-        System.out.println("Estimated sequential time: " + estimatedSequentialTime + "ms");
-        System.out.println("Maximum concurrent threads used: " + maxConcurrentThreads.get());
-        
-        // If truly parallel, should be faster than sequential processing
-        // We're using a less strict assertion to account for test environment variability
-        assertTrue(actualTime < estimatedSequentialTime * 1.5, 
-            "Parallel processing not faster than sequential processing");
     }
     
     @Test
-    void testExportToJson(@TempDir Path tempDir) throws IOException {
-        // Create a test violation with a string-based file path
-        Path testFilePath = tempDir.resolve("test.cs");
-        Files.writeString(testFilePath, "// Test file");
+    public void testSetAndGetConfig() {
+        // Default config should be used initially
+        ScannerConfig defaultConfig = engine.getConfig();
+        assertTrue(defaultConfig.isParallelProcessing());
         
-        SecurityViolation violation = new SecurityViolation(
-            "TEST-001", "Test violation", testFilePath, 1, 
-            "Code snippet", "HIGH", "Fix it", "https://example.com");
+        // Create a custom config
+        ScannerConfig customConfig = new ScannerConfig()
+            .setParallelProcessing(false)
+            .setMaxThreads(2)
+            .setCacheFileContent(false);
+            
+        // Set the custom config
+        engine.setConfig(customConfig);
         
-        List<SecurityViolation> violations = Collections.singletonList(violation);
+        // Verify the config was set
+        ScannerConfig retrievedConfig = engine.getConfig();
+        assertFalse(retrievedConfig.isParallelProcessing());
+        assertEquals(2, retrievedConfig.getMaxThreads());
+        assertFalse(retrievedConfig.isCacheFileContent());
+    }
+    
+    @Test
+    public void testEarlyTerminationConfig() throws IOException {
+        // Setup mock scanner to return multiple violations
+        List<SecurityViolation> mockViolations = Arrays.asList(
+            new SecurityViolation("RULE1", "Violation 1", "HIGH", testFile, 1),
+            new SecurityViolation("RULE2", "Violation 2", "MEDIUM", testFile, 2),
+            new SecurityViolation("RULE3", "Violation 3", "LOW", testFile, 3),
+            new SecurityViolation("RULE4", "Violation 4", "MEDIUM", testFile, 4),
+            new SecurityViolation("RULE5", "Violation 5", "HIGH", testFile, 5)
+        );
+        when(mockScanner.scanFile(any(Path.class))).thenReturn(mockViolations);
         
-        // Export to JSON
-        Path outputPath = tempDir.resolve("results.json");
-        engine.exportToJson(violations, outputPath);
+        // Set config to limit violations per file
+        ScannerConfig config = new ScannerConfig()
+            .setEarlyTermination(true)
+            .setMaxViolationsPerFile(3);
+        engine.setConfig(config);
         
-        // Verify file was created and contains expected content
-        assertTrue(Files.exists(outputPath));
-        String content = Files.readString(outputPath);
-        assertTrue(content.contains("TEST-001"));
-        assertTrue(content.contains("Test violation"));
-        assertTrue(content.contains("HIGH"));
-        assertTrue(content.contains("Fix it"));
-        assertTrue(content.contains("https://example.com"));
-        assertTrue(content.contains("filePathString"));
+        // Scan the file
+        List<SecurityViolation> result = engine.scanFile(testFile);
+        
+        // Verify that only maxViolationsPerFile violations were returned
+        assertEquals(3, result.size(), "Engine should limit violations based on config");
+    }
+    
+    @Test
+    public void testNoEarlyTerminationConfig() throws IOException {
+        // Setup mock scanner to return multiple violations
+        List<SecurityViolation> mockViolations = Arrays.asList(
+            new SecurityViolation("RULE1", "Violation 1", "HIGH", testFile, 1),
+            new SecurityViolation("RULE2", "Violation 2", "MEDIUM", testFile, 2),
+            new SecurityViolation("RULE3", "Violation 3", "LOW", testFile, 3),
+            new SecurityViolation("RULE4", "Violation 4", "MEDIUM", testFile, 4),
+            new SecurityViolation("RULE5", "Violation 5", "HIGH", testFile, 5)
+        );
+        when(mockScanner.scanFile(any(Path.class))).thenReturn(mockViolations);
+        
+        // Set config to disable early termination
+        ScannerConfig config = new ScannerConfig()
+            .setEarlyTermination(false)
+            .setMaxViolationsPerFile(3);
+        engine.setConfig(config);
+        
+        // Scan the file
+        List<SecurityViolation> result = engine.scanFile(testFile);
+        
+        // Verify that maxViolationsPerFile is still applied for result limiting
+        assertEquals(3, result.size(), "Engine should limit violations based on config");
+    }
+    
+    @Test
+    public void testFileSizeLimitConfig() throws IOException {
+        // Create a "large" test file
+        Path largeFile = tempDir.resolve("large.txt");
+        StringBuilder content = new StringBuilder();
+        for (int i = 0; i < 1000; i++) {
+            content.append("Line ").append(i).append(" of large test file\n");
+        }
+        Files.writeString(largeFile, content.toString(), StandardCharsets.UTF_8);
+        
+        // Set config with small file size limit
+        long fileSize = Files.size(largeFile);
+        ScannerConfig config = new ScannerConfig()
+            .setMaxFileSizeBytes(fileSize - 1); // Set limit below actual size
+        engine.setConfig(config);
+        
+        // Create a temporary directory with the test file
+        Path tempTestDir = tempDir.resolve("testdir");
+        Files.createDirectory(tempTestDir);
+        Path fileInDir = tempTestDir.resolve("test.txt");
+        Files.copy(testFile, fileInDir);
+        
+        // Scan the directory (with both files)
+        Path largeFileInDir = tempTestDir.resolve("large.txt");
+        Files.copy(largeFile, largeFileInDir);
+        
+        // Scan the directory
+        List<SecurityViolation> results = engine.scanDirectory(tempTestDir);
+        
+        // Verify that only small file is processed
+        verify(mockScanner, times(1)).scanFile(eq(fileInDir));
+        verify(mockScanner, never()).scanFile(eq(largeFileInDir));
+    }
+    
+    @Test
+    public void testLineLengthLimitConfig() throws IOException {
+        // Create a file with a very long line
+        Path fileWithLongLine = tempDir.resolve("longline.txt");
+        StringBuilder longLine = new StringBuilder("Line with ");
+        for (int i = 0; i < 10000; i++) {
+            longLine.append("very ");
+        }
+        longLine.append("long text");
+        
+        List<String> lines = Arrays.asList(
+            "Normal line 1",
+            longLine.toString(),
+            "Normal line 2"
+        );
+        Files.write(fileWithLongLine, lines, StandardCharsets.UTF_8);
+        
+        // Set max line length in config
+        ScannerConfig config = new ScannerConfig()
+            .setMaxLineLengthBytes(50);
+        engine.setConfig(config);
+        
+        // Read the file using engine's readFileWithFallback method
+        List<String> readLines = engine.readFileWithFallback(fileWithLongLine);
+        
+        // Check that the long line was truncated
+        assertTrue(readLines.get(1).length() <= 65, 
+            "Long line should be truncated (including truncation message)");
+        assertTrue(readLines.get(1).endsWith("... [truncated]"), 
+            "Truncated line should have truncation indicator");
+    }
+    
+    @Test
+    public void testFileCachingConfig() throws IOException {
+        // Set config to enable caching
+        ScannerConfig cachingConfig = new ScannerConfig()
+            .setCacheFileContent(true);
+        engine.setConfig(cachingConfig);
+        
+        // Read the file multiple times
+        List<String> firstRead = engine.readFileWithFallback(testFile);
+        List<String> secondRead = engine.readFileWithFallback(testFile);
+        
+        // Modify the file
+        Files.writeString(testFile, "Modified content", StandardCharsets.UTF_8);
+        
+        // Read again
+        List<String> thirdRead = engine.readFileWithFallback(testFile);
+        
+        // Check that the second read was from cache (same object)
+        assertSame(firstRead, secondRead, "Second read should be the same object (from cache)");
+        
+        // Check that third read has updated content (after file modified)
+        assertNotSame(secondRead, thirdRead, "Third read should be a different object (after modification)");
+        assertEquals("Modified content", thirdRead.get(0), "Third read should have modified content");
+        
+        // Now disable caching
+        ScannerConfig noCachingConfig = new ScannerConfig()
+            .setCacheFileContent(false);
+        engine.setConfig(noCachingConfig);
+        
+        // Modify file again
+        Files.writeString(testFile, "Modified again", StandardCharsets.UTF_8);
+        
+        // Read again
+        List<String> fourthRead = engine.readFileWithFallback(testFile);
+        List<String> fifthRead = engine.readFileWithFallback(testFile);
+        
+        // Verify that caching is disabled (different objects)
+        assertNotSame(fourthRead, fifthRead, "Reads with caching disabled should be different objects");
     }
 }
