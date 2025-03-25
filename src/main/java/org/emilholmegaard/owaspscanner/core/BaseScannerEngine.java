@@ -27,7 +27,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Default implementation of the ScannerEngine interface.
@@ -36,15 +39,15 @@ public class BaseScannerEngine implements ScannerEngine {
     private final List<SecurityScanner> scanners = new ArrayList<>();
     
     /**
+     * Configuration for this scanner engine
+     */
+    private ScannerConfig config = ScannerConfig.defaultConfig();
+    
+    /**
      * Cache for storing file content to avoid redundant file reads.
      * The key is the file path, and the value is a CachedFileContent object.
      */
     private static final Map<Path, CachedFileContent> fileContentCache = new ConcurrentHashMap<>();
-    
-    /**
-     * Maximum length of a line to be processed without truncation
-     */
-    private static final int MAX_LINE_LENGTH = 5000;
     
     @Override
     public void registerScanner(SecurityScanner scanner) {
@@ -52,33 +55,74 @@ public class BaseScannerEngine implements ScannerEngine {
     }
     
     @Override
+    public void setConfig(ScannerConfig config) {
+        this.config = config;
+    }
+    
+    @Override
+    public ScannerConfig getConfig() {
+        return config;
+    }
+    
+    @Override
     public List<SecurityViolation> scanDirectory(Path directoryPath) {
         try {
-            // Use a thread-safe collection to store violations from parallel processing
-            ConcurrentLinkedQueue<SecurityViolation> violationsQueue = new ConcurrentLinkedQueue<>();
-            
-            // Process files in parallel using parallel streams
-            Files.walk(directoryPath)
+            Stream<Path> fileStream = Files.walk(directoryPath)
                 .filter(Files::isRegularFile)
-                .parallel() // Enable parallel processing of files
-                .forEach(filePath -> {
-                    try {
-                        List<SecurityViolation> fileViolations = scanFile(filePath);
-                        // Thread-safe addition of all violations
-                        violationsQueue.addAll(fileViolations);
-                    } catch (Exception e) {
-                        // Skip problematic files and continue scanning
-                        System.err.println("Skipping file: " + filePath + " due to: " + e.getMessage());
-                    }
-                });
+                .filter(this::isFileSizeAcceptable);
             
-            // Convert queue to list for return
-            return new ArrayList<>(violationsQueue);
-            
+            if (config.isParallelProcessing()) {
+                ForkJoinPool customThreadPool = new ForkJoinPool(config.getMaxThreads());
+                try {
+                    return customThreadPool.submit(() -> 
+                        fileStream.parallel()
+                            .flatMap(this::scanFileToStream)
+                            .collect(Collectors.toList())
+                    ).get();
+                } catch (InterruptedException | ExecutionException e) {
+                    System.err.println("Error in parallel processing: " + e.getMessage());
+                    // Fallback to sequential processing
+                    fileStream = Files.walk(directoryPath)
+                        .filter(Files::isRegularFile)
+                        .filter(this::isFileSizeAcceptable);
+                    
+                    return fileStream
+                        .flatMap(this::scanFileToStream)
+                        .collect(Collectors.toList());
+                }
+            } else {
+                return fileStream
+                    .flatMap(this::scanFileToStream)
+                    .collect(Collectors.toList());
+            }
         } catch (IOException e) {
             System.err.println("Error scanning directory: " + e.getMessage());
             e.printStackTrace();
             return new ArrayList<>();
+        }
+    }
+    
+    /**
+     * Helper method to convert file scanning to a stream of violations
+     */
+    private Stream<SecurityViolation> scanFileToStream(Path filePath) {
+        try {
+            List<SecurityViolation> violations = scanFile(filePath);
+            return violations.stream();
+        } catch (Exception e) {
+            System.err.println("Skipping file: " + filePath + " due to: " + e.getMessage());
+            return Stream.empty();
+        }
+    }
+    
+    /**
+     * Check if file size is within acceptable limit
+     */
+    private boolean isFileSizeAcceptable(Path filePath) {
+        try {
+            return Files.size(filePath) <= config.getMaxFileSizeBytes();
+        } catch (IOException e) {
+            return false;
         }
     }
     
@@ -92,6 +136,13 @@ public class BaseScannerEngine implements ScannerEngine {
                 try {
                     List<SecurityViolation> fileViolations = scanner.scanFile(filePath);
                     violations.addAll(fileViolations);
+                    
+                    // Apply early termination if configured
+                    if (config.isEarlyTermination() && violations.size() >= config.getMaxViolationsPerFile()) {
+                        System.out.println("Early termination applied for file: " + filePath + 
+                            " after finding " + violations.size() + " violations");
+                        break;
+                    }
                 } catch (Exception e) {
                     // Only print full stack trace for non-encoding errors
                     if (!(e instanceof MalformedInputException)) {
@@ -102,6 +153,11 @@ public class BaseScannerEngine implements ScannerEngine {
                     }
                 }
             }
+        }
+        
+        // Limit number of violations if needed
+        if (violations.size() > config.getMaxViolationsPerFile()) {
+            return violations.subList(0, config.getMaxViolationsPerFile());
         }
         
         return violations;
@@ -166,7 +222,12 @@ public class BaseScannerEngine implements ScannerEngine {
      * @param filePath the path to the file to read
      * @return a list of lines from the file, or an empty list if all read attempts fail
      */
-    public static List<String> readFileWithFallback(Path filePath) {
+    public List<String> readFileWithFallback(Path filePath) {
+        // If caching is disabled, read the file directly without caching
+        if (!config.isCacheFileContent()) {
+            return readFileWithOptimizedEncoding(filePath);
+        }
+        
         try {
             // Check if file was modified since it was cached
             if (fileContentCache.containsKey(filePath)) {
@@ -189,8 +250,10 @@ public class BaseScannerEngine implements ScannerEngine {
         // File wasn't in cache or was modified, so read it
         List<String> lines = readFileWithOptimizedEncoding(filePath);
         
-        // Cache the content
-        fileContentCache.put(filePath, new CachedFileContent(lines));
+        // Cache the content if caching is enabled
+        if (config.isCacheFileContent()) {
+            fileContentCache.put(filePath, new CachedFileContent(lines));
+        }
         
         return lines;
     }
@@ -201,7 +264,7 @@ public class BaseScannerEngine implements ScannerEngine {
      * @param filePath the path to the file to read
      * @return a list of lines from the file
      */
-    private static List<String> readFileWithOptimizedEncoding(Path filePath) {
+    private List<String> readFileWithOptimizedEncoding(Path filePath) {
         // Try UTF-8 first as it's the most common encoding
         try {
             return readLinesWithLengthLimit(Files.readAllLines(filePath, StandardCharsets.UTF_8));
@@ -240,10 +303,11 @@ public class BaseScannerEngine implements ScannerEngine {
      * @param lines the list of lines to process
      * @return a list of lines with length limiting applied
      */
-    private static List<String> readLinesWithLengthLimit(List<String> lines) {
+    private List<String> readLinesWithLengthLimit(List<String> lines) {
+        long maxLength = config.getMaxLineLengthBytes();
         return lines.stream()
-            .map(line -> line.length() > MAX_LINE_LENGTH 
-                ? line.substring(0, MAX_LINE_LENGTH) + "... [truncated]" 
+            .map(line -> line.length() > maxLength 
+                ? line.substring(0, (int)maxLength) + "... [truncated]" 
                 : line)
             .collect(Collectors.toList());
     }
@@ -254,7 +318,7 @@ public class BaseScannerEngine implements ScannerEngine {
      * @param filePath the path to the file to read
      * @return a list of lines from the file, or an empty list if read fails
      */
-    private static List<String> readWithBinaryFallback(Path filePath) {
+    private List<String> readWithBinaryFallback(Path filePath) {
         try {
             byte[] bytes = Files.readAllBytes(filePath);
             CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
@@ -269,10 +333,11 @@ public class BaseScannerEngine implements ScannerEngine {
             String[] splitLines = content.split("\\r?\\n");
             
             // Apply length limiting
+            int maxLength = (int)config.getMaxLineLengthBytes();
             List<String> lines = new ArrayList<>(splitLines.length);
             for (String line : splitLines) {
-                if (line.length() > MAX_LINE_LENGTH) {
-                    lines.add(line.substring(0, MAX_LINE_LENGTH) + "... [truncated]");
+                if (line.length() > maxLength) {
+                    lines.add(line.substring(0, maxLength) + "... [truncated]");
                 } else {
                     lines.add(line);
                 }
@@ -297,7 +362,7 @@ public class BaseScannerEngine implements ScannerEngine {
     /**
      * Default implementation of RuleContext.
      */
-    public static class DefaultRuleContext implements RuleContext {
+    public class DefaultRuleContext implements RuleContext {
         private final Path filePath;
         private final List<String> fileContent;
         
