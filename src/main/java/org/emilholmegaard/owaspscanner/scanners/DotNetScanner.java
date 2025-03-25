@@ -12,6 +12,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 
 /**
  * Scanner implementation for .NET applications based on OWASP .NET Security Cheat Sheet.
@@ -19,6 +22,7 @@ import java.util.List;
  */
 public class DotNetScanner implements SecurityScanner {
     private final List<SecurityRule> rules;
+    private final BaseScannerEngine scannerEngine;
     
     /**
      * Constructs a new DotNetScanner that initializes rules using the factory pattern.
@@ -26,6 +30,7 @@ public class DotNetScanner implements SecurityScanner {
     public DotNetScanner() {
         // Use factory to get the rule implementations
         this.rules = DotNetRuleFactory.getInstance().createAllRules();
+        this.scannerEngine = new BaseScannerEngine();
     }
     
     @Override
@@ -48,8 +53,8 @@ public class DotNetScanner implements SecurityScanner {
         List<SecurityViolation> violations = new ArrayList<>();
         
         try {
-            // Use the central file reading method with encoding fallback
-            List<String> lines = BaseScannerEngine.readFileWithFallback(filePath);
+            // Use the scanner engine instance to read file content
+            List<String> lines = scannerEngine.readFileWithFallback(filePath);
             
             // Skip empty files or files that couldn't be read
             if (lines.isEmpty()) {
@@ -84,8 +89,8 @@ public class DotNetScanner implements SecurityScanner {
                 return violations;
             }
             
-            // Create a rule context for this file
-            RuleContext context = new BaseScannerEngine.DefaultRuleContext(filePath, lines);
+            // Create a rule context for this file using the scanner engine
+            RuleContext context = scannerEngine.new DefaultRuleContext(filePath, lines);
             
             // Process each line with each rule
             for (int i = 0; i < lines.size(); i++) {
