@@ -85,11 +85,11 @@ public class BaseScannerEngineTest {
     public void testEarlyTerminationConfig() throws IOException {
         // Setup mock scanner to return multiple violations
         List<SecurityViolation> mockViolations = Arrays.asList(
-            new SecurityViolation("RULE1", "Violation 1", "HIGH", testFile, 1),
-            new SecurityViolation("RULE2", "Violation 2", "MEDIUM", testFile, 2),
-            new SecurityViolation("RULE3", "Violation 3", "LOW", testFile, 3),
-            new SecurityViolation("RULE4", "Violation 4", "MEDIUM", testFile, 4),
-            new SecurityViolation("RULE5", "Violation 5", "HIGH", testFile, 5)
+            createViolation("RULE1", "Violation 1", testFile, 1, "HIGH"),
+            createViolation("RULE2", "Violation 2", testFile, 2, "MEDIUM"),
+            createViolation("RULE3", "Violation 3", testFile, 3, "LOW"),
+            createViolation("RULE4", "Violation 4", testFile, 4, "MEDIUM"),
+            createViolation("RULE5", "Violation 5", testFile, 5, "HIGH")
         );
         when(mockScanner.scanFile(any(Path.class))).thenReturn(mockViolations);
         
@@ -110,11 +110,11 @@ public class BaseScannerEngineTest {
     public void testNoEarlyTerminationConfig() throws IOException {
         // Setup mock scanner to return multiple violations
         List<SecurityViolation> mockViolations = Arrays.asList(
-            new SecurityViolation("RULE1", "Violation 1", "HIGH", testFile, 1),
-            new SecurityViolation("RULE2", "Violation 2", "MEDIUM", testFile, 2),
-            new SecurityViolation("RULE3", "Violation 3", "LOW", testFile, 3),
-            new SecurityViolation("RULE4", "Violation 4", "MEDIUM", testFile, 4),
-            new SecurityViolation("RULE5", "Violation 5", "HIGH", testFile, 5)
+            createViolation("RULE1", "Violation 1", testFile, 1, "HIGH"),
+            createViolation("RULE2", "Violation 2", testFile, 2, "MEDIUM"),
+            createViolation("RULE3", "Violation 3", testFile, 3, "LOW"),
+            createViolation("RULE4", "Violation 4", testFile, 4, "MEDIUM"),
+            createViolation("RULE5", "Violation 5", testFile, 5, "HIGH")
         );
         when(mockScanner.scanFile(any(Path.class))).thenReturn(mockViolations);
         
@@ -235,5 +235,17 @@ public class BaseScannerEngineTest {
         
         // Verify that caching is disabled (different objects)
         assertNotSame(fourthRead, fifthRead, "Reads with caching disabled should be different objects");
+    }
+    
+    /**
+     * Helper method to create a SecurityViolation for testing
+     */
+    private SecurityViolation createViolation(String ruleId, String description, Path filePath, int lineNumber, String severity) {
+        return new SecurityViolation.Builder(ruleId, description, filePath, lineNumber)
+            .snippet("Test snippet")
+            .severity(severity)
+            .remediation("Test remediation")
+            .reference("Test reference")
+            .build();
     }
 }
