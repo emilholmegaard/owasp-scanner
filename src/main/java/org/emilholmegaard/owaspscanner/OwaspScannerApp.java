@@ -116,13 +116,13 @@ public class OwaspScannerApp {
         System.out.println("Starting scan of directory: " + directoryPath);
         
         // Initialize scanner engine
-        ScannerEngine engine = new BaseScannerEngine();
+        BaseScannerEngine engine = new BaseScannerEngine();
         
         // Set configuration
         engine.setConfig(config);
         
-        // Register available scanners
-        DotNetScanner dotNetScanner = new DotNetScanner();
+        // Register available scanners with proper dependency injection
+        DotNetScanner dotNetScanner = new DotNetScanner(engine);
         engine.registerScanner(dotNetScanner);
         
         // Normalize path for cross-platform compatibility
