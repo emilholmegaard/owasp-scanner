@@ -14,6 +14,7 @@ The March 2025 update includes significant improvements to the .NET scanner:
 - **Enhanced test coverage** with unit and integration tests
 - **Factory refactoring** using HashMap and Supplier pattern for cleaner dependency management
 - **Performance testing framework** to track and optimize scanner performance
+- **Performance tuning configuration** to optimize scanning based on codebase size and system capabilities
 
 ## Features
 
@@ -22,6 +23,7 @@ The March 2025 update includes significant improvements to the .NET scanner:
 - Designed with extensibility in mind for future support of other technologies (Python, Java, etc.)
 - Generates JSON reports with detailed findings
 - Performance testing framework to measure and track scanner efficiency
+- Configurable performance tuning options for different environments
 
 ## Supported Security Checks (.NET)
 
@@ -84,6 +86,49 @@ Specify an output file for the report:
 java -jar owasp-scanner.jar scan /path/to/your/code output-report.json
 ```
 
+### Performance Tuning Options
+
+The scanner provides several command-line options for performance tuning:
+
+#### Preset Configurations
+
+```bash
+# Fast scan mode - optimized for speed
+java -jar owasp-scanner.jar scan /path/to/your/code --fast
+
+# Thorough scan mode - optimized for completeness
+java -jar owasp-scanner.jar scan /path/to/your/code --thorough
+```
+
+#### Custom Configuration Options
+
+```bash
+# Set the number of threads to use for parallel processing
+java -jar owasp-scanner.jar scan /path/to/your/code --threads=8
+
+# Set the maximum file size to process (in MB)
+java -jar owasp-scanner.jar scan /path/to/your/code --max-file-size=20
+
+# Set the maximum number of violations to collect per file
+java -jar owasp-scanner.jar scan /path/to/your/code --max-violations=50
+
+# Disable file content caching
+java -jar owasp-scanner.jar scan /path/to/your/code --no-cache
+
+# Disable parallel processing
+java -jar owasp-scanner.jar scan /path/to/your/code --no-parallel
+
+# Disable early termination (scan entire files even when violation threshold is reached)
+java -jar owasp-scanner.jar scan /path/to/your/code --no-early-termination
+```
+
+You can combine these options as needed:
+
+```bash
+# Example of combining options
+java -jar owasp-scanner.jar scan /path/to/your/code --fast --threads=16 --max-file-size=50
+```
+
 ## Architecture
 
 The scanner is designed with a modular architecture:
@@ -93,6 +138,7 @@ The scanner is designed with a modular architecture:
 - **Technology-specific Scanners**: Implement scanning logic for different technologies
 - **Security Rules**: Encapsulate the logic for detecting specific vulnerabilities
 - **Rule Factory**: Creates rule instances using the factory pattern and HashMap for efficient lookup
+- **Configuration System**: Allows fine-tuning scanner performance for different environments
 
 ### DotNet Scanner Design
 
@@ -103,6 +149,18 @@ The .NET scanner uses the following design patterns:
 - **Single Responsibility**: Each rule is in its own class with focused logic
 - **Dependency Injection**: Rules are created through suppliers for loose coupling
 - **Singleton Pattern**: Factory is a singleton for centralized rule management
+
+### Scanner Configuration
+
+The scanner uses a `ScannerConfig` class to encapsulate performance tuning options:
+
+- **Parallel Processing**: Controls whether to use parallel processing for faster scanning
+- **Thread Count**: Configures the number of threads to use for parallel processing
+- **File Content Caching**: Controls whether to cache file content to reduce I/O operations
+- **Line Length Limiting**: Prevents excessive memory usage by truncating very long lines
+- **Early Termination**: Stops scanning a file once a threshold of violations is reached
+- **Maximum Violations Per File**: Controls how many violations to collect per file
+- **Maximum File Size**: Skips files larger than this threshold to avoid memory issues
 
 ## Performance Testing Framework
 
