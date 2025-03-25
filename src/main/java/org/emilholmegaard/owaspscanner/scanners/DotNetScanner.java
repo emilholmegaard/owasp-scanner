@@ -53,8 +53,8 @@ public class DotNetScanner implements SecurityScanner {
         List<SecurityViolation> violations = new ArrayList<>();
         
         try {
-            // Use the scanner engine instance to read file content
-            List<String> lines = scannerEngine.readFileWithFallback(filePath);
+            // Use the static version of readFileWithFallback
+            List<String> lines = BaseScannerEngine.readFileWithFallback(filePath);
             
             // Skip empty files or files that couldn't be read
             if (lines.isEmpty()) {
@@ -89,8 +89,8 @@ public class DotNetScanner implements SecurityScanner {
                 return violations;
             }
             
-            // Create a rule context for this file using the scanner engine
-            RuleContext context = scannerEngine.new DefaultRuleContext(filePath, lines);
+            // Create a rule context for this file using a custom implementation
+            RuleContext context = new SimpleRuleContext(filePath, lines);
             
             // Process each line with each rule
             for (int i = 0; i < lines.size(); i++) {
@@ -125,5 +125,42 @@ public class DotNetScanner implements SecurityScanner {
         .remediation(rule.getRemediation())
         .reference(rule.getReference())
         .build();
+    }
+    
+    /**
+     * Simple implementation of RuleContext that doesn't depend on BaseScannerEngine inner class.
+     */
+    private static class SimpleRuleContext implements RuleContext {
+        private final Path filePath;
+        private final List<String> fileContent;
+        
+        public SimpleRuleContext(Path filePath, List<String> content) {
+            this.filePath = filePath;
+            this.fileContent = content;
+        }
+        
+        @Override
+        public Path getFilePath() {
+            return filePath;
+        }
+        
+        @Override
+        public List<String> getFileContent() {
+            return fileContent;
+        }
+        
+        @Override
+        public List<String> getLinesAround(int lineNumber, int windowSize) {
+            int start = Math.max(0, lineNumber - windowSize - 1);
+            int end = Math.min(fileContent.size(), lineNumber + windowSize);
+            
+            return fileContent.subList(start, end);
+        }
+        
+        @Override
+        public String getJoinedLinesAround(int lineNumber, int windowSize, String delimiter) {
+            List<String> contextLines = getLinesAround(lineNumber, windowSize);
+            return String.join(delimiter, contextLines);
+        }
     }
 }
