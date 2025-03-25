@@ -49,6 +49,11 @@ public class BaseScannerEngine implements ScannerEngine {
      */
     private static final Map<Path, CachedFileContent> fileContentCache = new ConcurrentHashMap<>();
     
+    /**
+     * Default maximum length of a line to be processed without truncation
+     */
+    private static final int DEFAULT_MAX_LINE_LENGTH = 5000;
+    
     @Override
     public void registerScanner(SecurityScanner scanner) {
         scanners.add(scanner);
@@ -225,7 +230,7 @@ public class BaseScannerEngine implements ScannerEngine {
     public List<String> readFileWithFallback(Path filePath) {
         // If caching is disabled, read the file directly without caching
         if (!config.isCacheFileContent()) {
-            return readFileWithOptimizedEncoding(filePath);
+            return readFileWithOptimizedEncoding(filePath, config.getMaxLineLengthBytes());
         }
         
         try {
@@ -248,7 +253,7 @@ public class BaseScannerEngine implements ScannerEngine {
         }
         
         // File wasn't in cache or was modified, so read it
-        List<String> lines = readFileWithOptimizedEncoding(filePath);
+        List<String> lines = readFileWithOptimizedEncoding(filePath, config.getMaxLineLengthBytes());
         
         // Cache the content if caching is enabled
         if (config.isCacheFileContent()) {
@@ -259,15 +264,28 @@ public class BaseScannerEngine implements ScannerEngine {
     }
     
     /**
-     * Reads file content with optimized encoding detection.
+     * Static helper method to read file content with optimized encoding detection.
+     * This is provided for compatibility with code that can't access the instance method.
      * 
      * @param filePath the path to the file to read
      * @return a list of lines from the file
      */
-    private List<String> readFileWithOptimizedEncoding(Path filePath) {
+    public static List<String> readFileWithFallback(Path filePath) {
+        // Use default configuration
+        return readFileWithOptimizedEncoding(filePath, DEFAULT_MAX_LINE_LENGTH);
+    }
+    
+    /**
+     * Reads file content with optimized encoding detection.
+     * 
+     * @param filePath the path to the file to read
+     * @param maxLineLength maximum length for each line
+     * @return a list of lines from the file
+     */
+    private static List<String> readFileWithOptimizedEncoding(Path filePath, long maxLineLength) {
         // Try UTF-8 first as it's the most common encoding
         try {
-            return readLinesWithLengthLimit(Files.readAllLines(filePath, StandardCharsets.UTF_8));
+            return readLinesWithLengthLimit(Files.readAllLines(filePath, StandardCharsets.UTF_8), maxLineLength);
         } catch (MalformedInputException e) {
             // If UTF-8 fails, try other common encodings
             List<Charset> fallbackCharsets = Arrays.asList(
@@ -279,7 +297,7 @@ public class BaseScannerEngine implements ScannerEngine {
             
             for (Charset charset : fallbackCharsets) {
                 try {
-                    return readLinesWithLengthLimit(Files.readAllLines(filePath, charset));
+                    return readLinesWithLengthLimit(Files.readAllLines(filePath, charset), maxLineLength);
                 } catch (MalformedInputException ex) {
                     // Try next encoding
                     continue;
@@ -290,10 +308,10 @@ public class BaseScannerEngine implements ScannerEngine {
             }
             
             // If all encodings fail, use binary fallback with replacements
-            return readWithBinaryFallback(filePath);
+            return readWithBinaryFallback(filePath, maxLineLength);
         } catch (IOException e) {
             // For other IO errors, try binary fallback
-            return readWithBinaryFallback(filePath);
+            return readWithBinaryFallback(filePath, maxLineLength);
         }
     }
     
@@ -301,13 +319,14 @@ public class BaseScannerEngine implements ScannerEngine {
      * Applies length limiting to each line to prevent excessive memory use
      * 
      * @param lines the list of lines to process
+     * @param maxLineLength maximum length for each line
      * @return a list of lines with length limiting applied
      */
-    private List<String> readLinesWithLengthLimit(List<String> lines) {
-        long maxLength = config.getMaxLineLengthBytes();
+    private static List<String> readLinesWithLengthLimit(List<String> lines, long maxLineLength) {
+        int maxLength = (int) maxLineLength;
         return lines.stream()
             .map(line -> line.length() > maxLength 
-                ? line.substring(0, (int)maxLength) + "... [truncated]" 
+                ? line.substring(0, maxLength) + "... [truncated]" 
                 : line)
             .collect(Collectors.toList());
     }
@@ -316,9 +335,10 @@ public class BaseScannerEngine implements ScannerEngine {
      * Reads file using binary fallback with replacement for invalid characters
      * 
      * @param filePath the path to the file to read
+     * @param maxLineLength maximum length for each line
      * @return a list of lines from the file, or an empty list if read fails
      */
-    private List<String> readWithBinaryFallback(Path filePath) {
+    private static List<String> readWithBinaryFallback(Path filePath, long maxLineLength) {
         try {
             byte[] bytes = Files.readAllBytes(filePath);
             CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
@@ -333,7 +353,7 @@ public class BaseScannerEngine implements ScannerEngine {
             String[] splitLines = content.split("\\r?\\n");
             
             // Apply length limiting
-            int maxLength = (int)config.getMaxLineLengthBytes();
+            int maxLength = (int) maxLineLength;
             List<String> lines = new ArrayList<>(splitLines.length);
             for (String line : splitLines) {
                 if (line.length() > maxLength) {
