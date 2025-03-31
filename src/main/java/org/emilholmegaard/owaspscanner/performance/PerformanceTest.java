@@ -1,9 +1,11 @@
 package org.emilholmegaard.owaspscanner.performance;
 
 import org.emilholmegaard.owaspscanner.core.BaseScannerEngine;
-import org.emilholmegaard.owaspscanner.core.ScannerEngine;
 import org.emilholmegaard.owaspscanner.core.SecurityViolation;
 import org.emilholmegaard.owaspscanner.scanners.DotNetScanner;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -21,28 +23,91 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Performance test utility for the OWASP Scanner.
- * Measures and records scan execution time, memory usage, and other metrics.
+ * This class implements a command-line tool that measures and records various
+ * performance metrics
+ * while running security scans on a directory of files.
+ * 
+ * <p>
+ * Metrics collected include:
+ * <ul>
+ * <li>Execution time</li>
+ * <li>Memory usage (peak and average)</li>
+ * <li>File count</li>
+ * <li>Number of security violations found</li>
+ * <li>System information (CPU cores, max heap size)</li>
+ * </ul>
+ * 
+ * <p>
+ * Results are saved to a CSV file for further analysis.
+ *
+ * @author Emil Holmegaard
+ * @version 1.0
  */
-public class PerformanceTest {
-    private static final Runtime runtime = Runtime.getRuntime();
-    private static final DateTimeFormatter TIMESTAMP_FORMATTER = 
-        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
-    
-    public static void main(String[] args) {
+@Component
+public class PerformanceTest implements CommandLineRunner {
+
+    /** Runtime instance for memory measurements */
+    private final Runtime runtime;
+
+    /** Formatter for timestamp entries in the CSV output */
+    private final DateTimeFormatter timestampFormatter;
+
+    /** Scanner engine instance for performing security scans */
+    private final BaseScannerEngine scannerEngine;
+
+    /** List to store memory usage samples during test execution */
+    private final List<Long> memorySamples;
+
+    /** Counter for tracking number of files processed */
+    private final AtomicInteger fileCounter;
+
+    /** Peak memory usage during test execution */
+    private long peakMemory;
+
+    /** Initial memory usage before test execution */
+    private long initialMemory;
+
+    /** Test start timestamp */
+    private Instant start;
+
+    /** Test end timestamp */
+    private Instant end;
+
+    @Autowired
+    public PerformanceTest(BaseScannerEngine scannerEngine) {
+        this.runtime = Runtime.getRuntime();
+        this.timestampFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
+        this.scannerEngine = scannerEngine;
+        this.memorySamples = new ArrayList<>();
+        this.fileCounter = new AtomicInteger(0);
+    }
+
+    /**
+     * Entry point for command-line execution. Processes arguments and initiates the
+     * performance test.
+     *
+     * @param args Command line arguments:
+     *             <ul>
+     *             <li>args[0] - Directory path containing files to scan</li>
+     *             <li>args[1] - Output CSV file path</li>
+     *             <li>args[2] - (Optional) Test run label</li>
+     *             </ul>
+     */
+    @Override
+    public void run(String... args) {
         if (args.length < 2) {
             System.out.println("Usage: PerformanceTest <test_directory> <output_csv> [test_label]");
             System.out.println("  test_directory  - Directory containing test files to scan");
             System.out.println("  output_csv      - Path to CSV file to append results to");
-            System.out.println("  test_label      - Optional label for this test run (e.g., 'baseline' or 'after-fix-123')");
+            System.out.println(
+                    "  test_label      - Optional label for this test run (e.g., 'baseline' or 'after-fix-123')");
             return;
         }
-        
+
         String testDir = args[0];
         String outputFile = args[1];
-        
-        // Optional test label
         String testLabel = args.length > 2 ? args[2] : "unlabeled";
-        
+
         try {
             runPerformanceTest(testDir, outputFile, testLabel);
         } catch (Exception e) {
@@ -50,62 +115,64 @@ public class PerformanceTest {
             e.printStackTrace();
         }
     }
-    
+
     /**
-     * Runs a performance test on the specified directory and records results.
-     * 
-     * @param testDirectory Directory to scan
-     * @param outputCsv CSV file to append results to
-     * @param testLabel Label to identify this test run
-     * @throws IOException If there is an error reading or writing files
-     * @throws InterruptedException If thread is interrupted during sleep
+     * Executes a performance test by scanning the specified directory and recording
+     * metrics.
+     * Results are appended to the specified CSV file.
+     *
+     * @param testDirectory Directory containing files to scan
+     * @param outputCsv     Path to CSV file where results should be written
+     * @param testLabel     Label to identify this test run
+     * @throws IOException          If there is an error reading test files or
+     *                              writing results
+     * @throws InterruptedException If the garbage collection pause is interrupted
      */
-    public static void runPerformanceTest(String testDirectory, String outputCsv, String testLabel) 
+    public void runPerformanceTest(String testDirectory, String outputCsv, String testLabel)
             throws IOException, InterruptedException {
         Path directoryPath = Paths.get(testDirectory).normalize();
         File resultsFile = new File(outputCsv);
         boolean fileExists = resultsFile.exists();
-        
+
         // Make sure parent directories exist
         if (resultsFile.getParentFile() != null) {
             resultsFile.getParentFile().mkdirs();
         }
-        
+
         // Run GC to start with a clean state
         System.gc();
         Thread.sleep(200); // Short pause to let GC complete
-        
+
         // Run the test and gather metrics
         PerformanceMetrics metrics = testScanPerformance(directoryPath);
-        
+
         // Add the test label
         metrics.testLabel = testLabel;
-        
+
         // Write results to CSV
         try (FileWriter writer = new FileWriter(resultsFile, true)) {
             // Write header if new file
             if (!fileExists) {
                 writer.write("Timestamp,TestLabel,Directory,DurationMs,PeakMemoryMB,AvgMemoryMB," +
-                             "FileCount,TotalViolations,CpuCores,MaxHeapMB\n");
+                        "FileCount,TotalViolations,CpuCores,MaxHeapMB\n");
             }
-            
+
             // Write new row
             writer.write(String.format("%s,%s,%s,%d,%.2f,%.2f,%d,%d,%d,%d\n",
-                ZonedDateTime.now().format(TIMESTAMP_FORMATTER),
-                metrics.testLabel,
-                directoryPath.toString().replace(",", ";"), // Escape commas in path
-                metrics.durationMs,
-                metrics.peakMemoryMB,
-                metrics.avgMemoryMB,
-                metrics.fileCount,
-                metrics.violationCount,
-                metrics.cpuCores,
-                metrics.maxHeapMB
-            ));
-            
+                    ZonedDateTime.now().format(timestampFormatter),
+                    metrics.testLabel,
+                    directoryPath.toString().replace(",", ";"), // Escape commas in path
+                    metrics.durationMs,
+                    metrics.peakMemoryMB,
+                    metrics.avgMemoryMB,
+                    metrics.fileCount,
+                    metrics.violationCount,
+                    metrics.cpuCores,
+                    metrics.maxHeapMB));
+
             System.out.println("\nPerformance test results saved to: " + outputCsv);
         }
-        
+
         // Print summary
         System.out.println("\nPerformance Test Summary:");
         System.out.println("-------------------------");
@@ -121,62 +188,39 @@ public class PerformanceTest {
         System.out.println("\nJVM version: " + System.getProperty("java.version"));
         System.out.println("OS: " + System.getProperty("os.name") + " " + System.getProperty("os.version"));
     }
-    
+
     /**
-     * Performs the scan and measures performance metrics.
-     * 
+     * Performs the actual security scan and collects performance metrics.
+     *
      * @param directoryPath Directory to scan
-     * @return Collected performance metrics
-     * @throws IOException If there is an error reading files
-     * @throws InterruptedException If thread is interrupted during sleep
+     * @return PerformanceMetrics object containing collected metrics
+     * @throws IOException          If there is an error reading files
+     * @throws InterruptedException If the thread is interrupted during execution
      */
-    private static PerformanceMetrics testScanPerformance(Path directoryPath) throws IOException, InterruptedException {
-        // Set up the scanner
-        ScannerEngine engine = new BaseScannerEngine();
-        engine.registerScanner(new DotNetScanner());
-        
-        // Create a file counter
-        AtomicInteger fileCounter = new AtomicInteger(0);
-        
-        // Count files before scanning to get accurate file count
-        Files.walk(directoryPath)
-            .filter(Files::isRegularFile)
-            .forEach(path -> fileCounter.incrementAndGet());
-        
-        // Force GC to get more accurate memory measurements
-        System.gc();
-        Thread.sleep(100); // Short pause to let GC complete
-        
-        // Get initial memory
-        long initialMemory = getUsedMemory();
-        long peakMemory = initialMemory;
-        
-        // Setup memory sampling
-        List<Long> memorySamples = new ArrayList<>();
-        memorySamples.add(initialMemory);
-        
-        // Start timing
-        Instant start = Instant.now();
-        
+    private PerformanceMetrics testScanPerformance(Path directoryPath) throws IOException, InterruptedException {
+        // Initialize metrics collection
+        start = Instant.now();
+        initialMemory = getUsedMemory();
+        peakMemory = initialMemory;
+        memorySamples.clear();
+        fileCounter.set(0);
+
         // Run the scan
-        List<SecurityViolation> violations = engine.scanDirectory(directoryPath);
-        
-        // End timing
-        Instant end = Instant.now();
-        
+        List<SecurityViolation> violations = scannerEngine.scanDirectory(directoryPath);
+        end = Instant.now();
+
         // Check peak memory one more time
         long currentMemory = getUsedMemory();
-        memorySamples.add(currentMemory);
         if (currentMemory > peakMemory) {
             peakMemory = currentMemory;
         }
-        
+
         // Calculate average memory usage
         double avgMemory = memorySamples.stream()
-            .mapToLong(Long::longValue)
-            .average()
-            .orElse(0.0);
-        
+                .mapToLong(Long::longValue)
+                .average()
+                .orElse(0.0);
+
         // Create metrics
         PerformanceMetrics metrics = new PerformanceMetrics();
         metrics.durationMs = Duration.between(start, end).toMillis();
@@ -186,40 +230,61 @@ public class PerformanceTest {
         metrics.violationCount = violations.size();
         metrics.cpuCores = Runtime.getRuntime().availableProcessors();
         metrics.maxHeapMB = runtime.maxMemory() / (1024 * 1024);
-        
+
         return metrics;
     }
-    
+
     /**
-     * Gets the currently used memory in bytes.
+     * Calculates the current memory usage of the JVM.
+     *
+     * @return Current used memory in bytes
      */
-    private static long getUsedMemory() {
+    private long getUsedMemory() {
         return runtime.totalMemory() - runtime.freeMemory();
     }
-    
+
     /**
-     * Formats duration in milliseconds to a human-readable string.
+     * Formats a duration in milliseconds to a human-readable string (e.g., "1m 30s
+     * 500ms").
+     *
+     * @param milliseconds Duration to format
+     * @return Formatted string representing the duration
      */
-    private static String formatDuration(long milliseconds) {
+    private String formatDuration(long milliseconds) {
         long seconds = milliseconds / 1000;
         long minutes = seconds / 60;
         seconds = seconds % 60;
         milliseconds = milliseconds % 1000;
-        
+
         return String.format("%dm %ds %dms", minutes, seconds, milliseconds);
     }
-    
+
     /**
-     * Class to hold performance metrics.
+     * Data class for storing performance metrics collected during a test run.
      */
     static class PerformanceMetrics {
+        /** Label identifying the test run */
         String testLabel;
+
+        /** Total duration of the scan in milliseconds */
         long durationMs;
+
+        /** Peak memory usage in megabytes */
         double peakMemoryMB;
+
+        /** Average memory usage in megabytes */
         double avgMemoryMB;
+
+        /** Number of files scanned */
         int fileCount;
+
+        /** Number of security violations found */
         int violationCount;
+
+        /** Number of CPU cores available */
         int cpuCores;
+
+        /** Maximum heap size in megabytes */
         long maxHeapMB;
     }
 }
