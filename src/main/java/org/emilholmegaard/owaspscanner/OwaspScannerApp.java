@@ -65,7 +65,7 @@ public class OwaspScannerApp implements CommandLineRunner {
                 String directoryPath = args[1];
                 String outputPath = args.length > 2 ? args[2] : "scan_results.json";
 
-                runScan(directoryPath, outputPath);
+                this.runScan(directoryPath, outputPath);
                 break;
 
             case "help":
@@ -85,7 +85,7 @@ public class OwaspScannerApp implements CommandLineRunner {
      * @param directoryPath The path to the directory to scan
      * @param outputPath    The path where to save the scan results
      */
-    private static void runScan(String directoryPath, String outputPath) {
+    private void runScan(String directoryPath, String outputPath) {
         Path normalizedPath = Paths.get(directoryPath).normalize();
 
         // Run the scan
