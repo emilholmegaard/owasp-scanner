@@ -1,7 +1,6 @@
 package org.emilholmegaard.owaspscanner.core;
 
 import java.nio.file.Path;
-import java.util.List;
 
 /**
  * Represents a security violation found by a scanner.
@@ -19,8 +18,8 @@ public class SecurityViolation {
 
     // Constructors, getters, setters
 
-    public SecurityViolation(String ruleId, String description, Path filePath, int lineNumber, 
-                           String snippet, String severity, String remediation, String reference) {
+    public SecurityViolation(String ruleId, String description, Path filePath, int lineNumber,
+            String snippet, String severity, String remediation, String reference) {
         this.ruleId = ruleId;
         this.description = description;
         this.filePath = filePath;
@@ -33,15 +32,41 @@ public class SecurityViolation {
     }
 
     // Getters
-    public String getRuleId() { return ruleId; }
-    public String getDescription() { return description; }
-    public Path getFilePath() { return filePath; }
-    public String getFilePathString() { return filePathString; }
-    public int getLineNumber() { return lineNumber; }
-    public String getSnippet() { return snippet; }
-    public String getSeverity() { return severity; }
-    public String getRemediation() { return remediation; }
-    public String getReference() { return reference; }
+    public String getRuleId() {
+        return ruleId;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public Path getFilePath() {
+        return filePath;
+    }
+
+    public String getFilePathString() {
+        return filePathString;
+    }
+
+    public int getLineNumber() {
+        return lineNumber;
+    }
+
+    public String getSnippet() {
+        return snippet;
+    }
+
+    public String getSeverity() {
+        return severity;
+    }
+
+    public String getRemediation() {
+        return remediation;
+    }
+
+    public String getReference() {
+        return reference;
+    }
 
     // Builder pattern for easier construction
     public static class Builder {
@@ -82,8 +107,8 @@ public class SecurityViolation {
         }
 
         public SecurityViolation build() {
-            return new SecurityViolation(ruleId, description, filePath, lineNumber, 
-                                       snippet, severity, remediation, reference);
+            return new SecurityViolation(ruleId, description, filePath, lineNumber,
+                    snippet, severity, remediation, reference);
         }
     }
 }

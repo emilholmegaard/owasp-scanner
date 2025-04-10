@@ -1,3 +1,10 @@
 {
-    "java.configuration.updateBuildConfiguration": "interactive"
+    "java.configuration.updateBuildConfiguration": "interactive",
+    "java.compile.nullAnalysis.mode": "automatic",
+    "java.test.config": {
+        "vmargs": [
+            "-Djava.util.concurrent.ForkJoinPool.common.parallelism=4",
+            "-XX:ActiveProcessorCount=4"
+        ]
+    }
 }

@@ -6,7 +6,6 @@ import org.emilholmegaard.owaspscanner.core.SecurityRule;
 import org.emilholmegaard.owaspscanner.core.SecurityScanner;
 import org.emilholmegaard.owaspscanner.core.SecurityViolation;
 import org.emilholmegaard.owaspscanner.scanners.dotnet.AbstractDotNetSecurityRule;
-import org.emilholmegaard.owaspscanner.scanners.dotnet.DotNetRuleFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 

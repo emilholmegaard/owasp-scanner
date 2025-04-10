@@ -10,23 +10,16 @@ import com.google.gson.JsonSerializer;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.nio.charset.MalformedInputException;
-import java.nio.charset.StandardCharsets;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.Charset;
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
+
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.emilholmegaard.owaspscanner.service.FileService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,7 +30,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class BaseScannerEngine implements ScannerEngine {
-    private final List<SecurityScanner> scanners = new ArrayList<>();
+    private final List<SecurityScanner> scanners = new CopyOnWriteArrayList<SecurityScanner>();
     private final FileService fileService;
 
     @Autowired
@@ -53,25 +46,21 @@ public class BaseScannerEngine implements ScannerEngine {
     @Override
     public List<SecurityViolation> scanDirectory(Path directoryPath) {
         try {
-            ConcurrentLinkedQueue<SecurityViolation> violationsQueue = new ConcurrentLinkedQueue<>();
-
-            Files.walk(directoryPath)
+            return Files.walk(directoryPath)
                     .filter(Files::isRegularFile)
                     .parallel()
-                    .forEach(filePath -> {
+                    .unordered()
+                    .flatMap(filePath -> {
                         try {
-                            List<SecurityViolation> fileViolations = scanFile(filePath);
-                            violationsQueue.addAll(fileViolations);
+                            return scanFile(filePath).stream();
                         } catch (Exception e) {
-                            System.err.println("Skipping file: " + filePath + " due to: " + e.getMessage());
+                            System.err.print("Error scanning file " + filePath + ": " + e.getMessage());
+                            return Stream.empty();
                         }
-                    });
-
-            return new ArrayList<>(violationsQueue);
-
-        } catch (IOException e) {
-            System.err.println("Error scanning directory: " + e.getMessage());
-            e.printStackTrace();
+                    })
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            System.err.print("Error scanning directory" + directoryPath + ": " + e.getMessage());
             return new ArrayList<>();
         }
     }
@@ -121,6 +110,10 @@ public class BaseScannerEngine implements ScannerEngine {
             System.err.println("Error exporting results to JSON: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    public List<String> readFileWithFallback(Path filePath) {
+        return fileService.readFileWithFallback(filePath);
     }
 
     /**
@@ -217,4 +210,5 @@ public class BaseScannerEngine implements ScannerEngine {
             return joinedContext;
         }
     }
+
 }

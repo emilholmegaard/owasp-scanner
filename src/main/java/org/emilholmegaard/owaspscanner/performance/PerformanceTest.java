@@ -2,7 +2,6 @@ package org.emilholmegaard.owaspscanner.performance;
 
 import org.emilholmegaard.owaspscanner.core.BaseScannerEngine;
 import org.emilholmegaard.owaspscanner.core.SecurityViolation;
-import org.emilholmegaard.owaspscanner.scanners.DotNetScanner;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
@@ -10,7 +9,6 @@ import org.springframework.stereotype.Component;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;

@@ -2,113 +2,111 @@ package org.emilholmegaard.owaspscanner.scanners.dotnet;
 
 import org.emilholmegaard.owaspscanner.core.SecurityRule;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+
+// Assuming RuleContext is part of the core package
+import org.emilholmegaard.owaspscanner.core.RuleContext;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class DotNetRuleFactoryTest {
+@SpringBootTest(classes = { DotNetRuleFactory.class, DotNetRuleFactoryTest.TestConfig.class })
+class DotNetRuleFactoryTest {
+
+    @Autowired
+    private DotNetRuleFactory ruleFactory;
+
+    @TestConfiguration
+    static class TestConfig {
+        @Bean
+        DotNetRuleFactory ruleFactory() {
+            return new DotNetRuleFactory(List.of(mockRule1(), mockRule2()));
+        }
+
+        @Bean
+        SecurityRule mockRule1() {
+            return new TestSecurityRule("MOCK-001", "Mock Rule 1");
+        }
+
+        @Bean
+        SecurityRule mockRule2() {
+            return new TestSecurityRule("MOCK-002", "Mock Rule 2");
+        }
+    }
 
     @Test
-    public void testCreateAllRules() {
-        // Get the factory instance
-        DotNetRuleFactory factory = DotNetRuleFactory.getInstance();
-        
-        // Get all rules
-        List<SecurityRule> rules = factory.createAllRules();
-        
-        // Verify that all expected rules are created - using explicitly .size() >= 9 to handle
-        // potential cases where more rules are added in the future
-        assertTrue(rules.size() >= 9, "Should create at least 9 rules");
-        
-        // Verify that we have one of each type of rule
-        assertTrue(rules.stream().anyMatch(r -> r instanceof HttpSecurityHeadersRule),
-            "Should contain HttpSecurityHeadersRule");
-        assertTrue(rules.stream().anyMatch(r -> r instanceof InputValidationRule),
-            "Should contain InputValidationRule");
-        assertTrue(rules.stream().anyMatch(r -> r instanceof SqlInjectionRule),
-            "Should contain SqlInjectionRule");
-        assertTrue(rules.stream().anyMatch(r -> r instanceof XssPreventionRule),
-            "Should contain XssPreventionRule");
-        assertTrue(rules.stream().anyMatch(r -> r instanceof CsrfProtectionRule),
-            "Should contain CsrfProtectionRule");
-        assertTrue(rules.stream().anyMatch(r -> r instanceof SecureConfigurationRule),
-            "Should contain SecureConfigurationRule");
-        assertTrue(rules.stream().anyMatch(r -> r instanceof AuthenticationRule),
-            "Should contain AuthenticationRule");
-        assertTrue(rules.stream().anyMatch(r -> r instanceof SessionManagementRule),
-            "Should contain SessionManagementRule");
-        assertTrue(rules.stream().anyMatch(r -> r instanceof ExceptionHandlingRule),
-            "Should contain ExceptionHandlingRule");
+    void testRuleInjection() {
+        List<SecurityRule> rules = ruleFactory.getAllRules();
+        assertNotNull(rules, "Rules list should not be null");
+        assertFalse(rules.isEmpty(), "Rules list should not be empty");
     }
-    
+
     @Test
-    public void testCreateSpecificRule() {
-        // Get the factory instance
-        DotNetRuleFactory factory = DotNetRuleFactory.getInstance();
-        
-        // Create specific rules by ID
-        SecurityRule sqlRule = factory.createRule("DOTNET-SEC-003");
-        SecurityRule xssRule = factory.createRule("DOTNET-SEC-004");
-        SecurityRule nonExistentRule = factory.createRule("DOTNET-SEC-999");
-        
-        // Verify rule creation
-        assertNotNull(sqlRule, "Should create SQL injection rule");
-        assertTrue(sqlRule instanceof SqlInjectionRule, "Should be a SqlInjectionRule instance");
-        
-        assertNotNull(xssRule, "Should create XSS prevention rule");
-        assertTrue(xssRule instanceof XssPreventionRule, "Should be a XssPreventionRule instance");
-        
-        assertNull(nonExistentRule, "Should return null for non-existent rule ID");
+    void testRuleCount() {
+        List<SecurityRule> rules = ruleFactory.getAllRules();
+        assertEquals(2, rules.size(), "Should have exactly 2 mock rules");
     }
-    
+
     @Test
-    public void testRegisterCustomRule() {
-        // Get the factory instance
-        DotNetRuleFactory factory = DotNetRuleFactory.getInstance();
-        
-        // Create a mock rule supplier
-        Supplier<SecurityRule> mockRuleSupplier = () -> new AbstractDotNetSecurityRule(
-            "DOTNET-CUSTOM-001", 
-            "Custom Test Rule",
-            "LOW",
-            "Just for testing",
-            "https://example.com",
-            java.util.regex.Pattern.compile("test")
-        ) {
-            @Override
-            protected boolean checkViolation(String line, int lineNumber, org.emilholmegaard.owaspscanner.core.RuleContext context) {
-                return false;
+    void testRuleContent() {
+        List<SecurityRule> rules = ruleFactory.getAllRules();
+        boolean foundMock1 = false;
+        boolean foundMock2 = false;
+
+        for (SecurityRule rule : rules) {
+            if (rule.getId().equals("MOCK-001")) {
+                foundMock1 = true;
+            } else if (rule.getId().equals("MOCK-002")) {
+                foundMock2 = true;
             }
-        };
-        
-        // Register the custom rule
-        factory.registerRule("DOTNET-CUSTOM-001", mockRuleSupplier);
-        
-        // Try to create the custom rule
-        SecurityRule customRule = factory.createRule("DOTNET-CUSTOM-001");
-        
-        // Verify custom rule creation
-        assertNotNull(customRule, "Should create custom rule");
-        assertEquals("DOTNET-CUSTOM-001", customRule.getId(), "Custom rule should have correct ID");
-        assertEquals("Custom Test Rule", customRule.getDescription(), "Custom rule should have correct description");
+        }
+
+        assertTrue(foundMock1, "Should contain MOCK-001 rule");
+        assertTrue(foundMock2, "Should contain MOCK-002 rule");
     }
-    
-    @Test
-    public void testSingletonBehavior() {
-        // Get two instances
-        DotNetRuleFactory instance1 = DotNetRuleFactory.getInstance();
-        DotNetRuleFactory instance2 = DotNetRuleFactory.getInstance();
-        
-        // Verify that they are the same instance
-        assertSame(instance1, instance2, "Factory should be a singleton");
-        
-        // Register a custom rule on the first instance
-        instance1.registerRule("DOTNET-TEST-001", () -> new HttpSecurityHeadersRule());
-        
-        // Verify that the second instance can create that rule
-        assertNotNull(instance2.createRule("DOTNET-TEST-001"), 
-            "Second instance should access rules registered on first instance");
+
+    // Helper test class for mocking SecurityRule
+    private static class TestSecurityRule implements SecurityRule {
+        private final String ruleId;
+        private final String description;
+
+        TestSecurityRule(String ruleId, String description) {
+            this.ruleId = ruleId;
+            this.description = description;
+        }
+
+        @Override
+        public String getDescription() {
+            return description;
+        }
+
+        @Override
+        public String getId() {
+            return ruleId;
+        }
+
+        @Override
+        public String getSeverity() {
+            return "LOW"; // Default severity for test purposes
+        }
+
+        @Override
+        public boolean isViolatedBy(String content, int lineNumber, RuleContext context) {
+            return false; // Default implementation for test purposes
+        }
+
+        @Override
+        public String getReference() {
+            return "No reference"; // Default reference for test purposes
+        }
+
+        @Override
+        public String getRemediation() {
+            return "No remediation"; // Default remediation for test purposes
+        }
     }
 }
